@@ -1,7 +1,7 @@
 const EXTRA = ["search", "skip"];
 
 const sites = [
-  { id: "khmertv", name: "KhmerTV", type: "movie", enabled: true },
+  { id: "khmertv", name: "KhmerTV", type: "movie" },
   { id: "vip", name: "PhumiVip", type: "series" },
   { id: "sunday", name: "SundayDrama", type: "series" },
   { id: "phumi2", name: "PhumiClub", type: "series" },
