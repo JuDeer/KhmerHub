@@ -10,7 +10,7 @@ const sites = [
   { id: "merlkon", name: "Merlkon", type: "series" },
   { id: "idrama", name: "iDramaHD", type: "series" },
   { id: "cat3movie", name: "Cat3Movie", type: "movie" },
-  { id: "xvideos", name: "xvideos", type: "movie" }  
+  { id: "xvideos", name: "xvideos", type: "movie" },  
 ];
 
 module.exports = {
