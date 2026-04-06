@@ -57,6 +57,11 @@ module.exports = Object.freeze({
   xvideos: {
     pageSize: 27,
     baseUrl: "https://www.xvideos.com"
-  }
+  },
+  
+  khmertv: {
+	pageSize: 8,  
+    baseUrl: ""
+  }  
   
 });

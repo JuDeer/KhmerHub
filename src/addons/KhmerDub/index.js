@@ -1,11 +1,15 @@
 const { addonBuilder } = require("stremio-addon-sdk");
 const manifest = require("./manifest");
 
+const enabledSites = new Set(
+  manifest.catalogs.map(c => c.id)
+);
+
 const engine = require("./sites/engine");
 const khmerave = require("./sites/khmerave");
 const phumi2 = require("./sites/phumi2");
 const cat3movie = require("./sites/cat3movie");
-const xvideos = require("./sites/xvideos");
+const khmertv = require("./sites/khmertv");
 
 const sites = require("./sites/config");
 
@@ -15,22 +19,24 @@ const { normalizePoster, mapMetas, uniqById } = require("./utils/helpers");
 
 const SITE_TYPES = {
   cat3movie: "movie",
-  xvideos: "movie",
+  khmertv: "movie",
   default: "series"
 };
 
 const ENGINES = {
+  khmertv,
   vip: engine,
   sunday: engine,
   idrama: engine,
   khmerave,
   merlkon: khmerave,
   phumi2,
-  cat3movie,
-  xvideos
+  cat3movie
 };
 
 function getSiteEngine(id) {
+  if (!enabledSites.has(id)) return null;
+
   const site = sites[id];
   const engine = ENGINES[id];
 
@@ -50,6 +56,14 @@ builder.defineCatalogHandler(async ({ id, extra }) => {
     if (!ctx) return { metas: [] };
 
     const { site, engine: siteEngine } = ctx;
+	
+	if (id === "khmertv") {
+      const skip = Number(extra?.skip || 0);
+      if (skip > 0) return { metas: [] };
+
+      const items = await siteEngine.getCatalogItems(id, site, "");
+      return { metas: mapMetas(items, "movie") };
+	}
 
     if (extra?.search && (id === "khmerave" || id === "merlkon")) {
       const keyword = encodeURIComponent(extra.search);

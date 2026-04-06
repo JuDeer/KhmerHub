@@ -8,6 +8,7 @@ const khmerave = require("./sites/khmerave");
 const phumi2 = require("./sites/phumi2");
 const cat3movie = require("./sites/cat3movie");
 const xvideos = require("./sites/xvideos");
+const khmertv = require("./sites/khmertv");
 
 const PAGE_TRACKER = new Map();
 const PAGE_URL_CACHE = new Map();
@@ -47,6 +48,7 @@ const ENGINES = {
   phumi2,
   cat3movie,
   xvideos,
+  khmertv,
 };
 
 function getSiteEngine(id) {
@@ -80,6 +82,24 @@ builder.defineCatalogHandler(async ({ id, extra }) => {
     if (!ctx) return { metas: [] };
 
     const { site, engine: siteEngine } = ctx;
+	
+	if (id === "khmertv") {
+	  const khmerTvSkip = Number(extra?.skip || 0);
+	  if (khmerTvSkip > 0) {
+	    return { metas: [] };
+	  }
+
+	  const items = await siteEngine.getCatalogItems(id, site, "");
+	  const fixed = applyMetaId(items, id);
+
+	  const result = {
+	    metas: mapMetas(fixed, "movie"),
+	    cacheMaxAge: 3600
+	  };
+
+	  CATALOG_CACHE.set(cacheKey, result);
+	  return result;
+	}	
 
     // KhmerAve / Merlkon: search
     if (extra?.search && (id === "khmerave" || id === "merlkon")) {
@@ -446,7 +466,7 @@ builder.defineMetaHandler(async ({ id }) => {
 
     const parts = id.split(":");
     const prefix = parts[0];
-    const metaType = MOVIE_SITES.includes(prefix) ? "movie" : TYPE;
+    const metaType = (prefix === "cat3movie" || prefix === "khmertv") ? "movie" : TYPE;
 
     const ctx = getSiteEngine(prefix);
     if (!ctx) return { meta: null };
@@ -514,7 +534,7 @@ builder.defineMetaHandler(async ({ id }) => {
         description: (first.title || "KhmerDub").replace(/\[.*?\]/g, ""),
         poster: first.thumbnail,
         background: first.thumbnail,
-        videos: MOVIE_SITES.includes(prefix)
+        videos: (prefix === "cat3movie" || prefix === "khmertv")
           ? [{
               id: `${id}:1`,
               title: cleanName,
@@ -612,7 +632,7 @@ builder.defineStreamHandler(async ({ id }) => {
 
     if (!stream) return { streams: [] };
 
-    return { streams: [stream] };
+    return { streams: Array.isArray(stream) ? stream : [stream] };
   } catch (err) {
     console.error("stream error:", err);
     return { streams: [] };
