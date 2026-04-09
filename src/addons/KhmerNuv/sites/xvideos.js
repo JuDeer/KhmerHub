@@ -12,7 +12,7 @@ const BASE_URL = "https://www.xvideos.com";
 const HEADERS = {
   "User-Agent":
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120 Safari/537.36",
-  Referer: BASE_URL
+  Referer: `${BASE_URL}/`
 };
 
 /* =========================
@@ -47,9 +47,9 @@ function uniq(arr = []) {
 ========================= */
 function extractJsonLdContentUrl(html = "") {
   try {
-    const matches = [...html.matchAll(
-      /<script type="application\/ld\+json">([\s\S]*?)<\/script>/gi
-    )];
+    const matches = [
+      ...html.matchAll(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/gi)
+    ];
 
     for (const m of matches) {
       const raw = m[1];
@@ -88,10 +88,8 @@ function extractPlayerSources(html = "") {
 function getQualityScore(url = "") {
   const u = String(url || "").toLowerCase();
 
-  // Prefer HLS first if available
   if (/\.m3u8(\?|$)/i.test(u)) return 1000;
 
-  // Explicit quality hints
   if (/2160|4k/.test(u)) return 900;
   if (/1440/.test(u)) return 800;
   if (/1080/.test(u)) return 700;
@@ -100,7 +98,6 @@ function getQualityScore(url = "") {
   if (/360/.test(u)) return 400;
   if (/240/.test(u)) return 300;
 
-  // Generic mp4 markers
   if (/mp4_hd/.test(u)) return 650;
   if (/mp4_hq/.test(u)) return 625;
   if (/mp4_sd/.test(u)) return 450;
@@ -131,10 +128,7 @@ async function getDetail(url) {
       $("title").text()
     );
 
-    let poster =
-      $('meta[property="og:image"]').attr("content") ||
-      "";
-
+    let poster = $('meta[property="og:image"]').attr("content") || "";
     poster = normalizePoster(poster);
 
     const sources = extractPlayerSources(data);
@@ -155,10 +149,8 @@ async function getDetail(url) {
    CATALOG
 ========================= */
 async function getCatalogItems(prefix, siteConfig, url) {
-  console.log("[XVIDEOS] FETCH:", url);
-
   try {
-    const pageUrl = url || BASE_URL;
+    const pageUrl = url || `${BASE_URL}/`;
 
     const { data } = await axiosClient.get(pageUrl, {
       headers: HEADERS
@@ -166,48 +158,39 @@ async function getCatalogItems(prefix, siteConfig, url) {
 
     const $ = cheerio.load(data);
 
-    const rawItems = $(".thumb-block").toArray();
     const items = $(".thumb-block")
       .not(".video-suggest")
       .toArray();
-
-    console.log("[XVIDEOS] RAW vs FILTERED:", {
-      raw: rawItems.length,
-      filtered: items.length
-    });
 
     const results = items
       .map((el) => {
         const $el = $(el);
 
-        const link = $el.find("a").attr("href");
+        const titleEl = $el.find("p.title a").first();
+        const imgEl = $el.find("img").first();
+
+        const link = titleEl.attr("href") || $el.find("a").first().attr("href") || "";
         const title = cleanTitle(
-          $el.find("p.title a").attr("title") ||
-          $el.find("p.title a").text()
+          titleEl.attr("title") ||
+          titleEl.text()
         );
         const poster =
-          $el.find("img").attr("data-src") ||
-          $el.find("img").attr("src");
+          imgEl.attr("data-src") ||
+          imgEl.attr("src") ||
+          "";
 
         if (!link || !title) return null;
 
         return {
-          id: absolutize(link),
+          id: `xvideos:${encodeURIComponent(absolutize(link))}`,
           name: title,
           poster: normalizePoster(poster)
         };
       })
       .filter(Boolean);
 
-    console.log("[XVIDEOS] MAPPED:", results.length);
-
-    const unique = uniqById(results);
-
-    console.log("[XVIDEOS] UNIQUE:", unique.length);
-
-    return unique;
-  } catch (err) {
-    console.log("[XVIDEOS] ERROR:", err.message);
+    return uniqById(results);
+  } catch {
     return [];
   }
 }

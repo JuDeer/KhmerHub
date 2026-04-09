@@ -22,5 +22,4 @@ function makeMetaId(prefix, url) {
 
 module.exports = {
   makeMetaId
-
 };
