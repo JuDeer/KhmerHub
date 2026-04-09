@@ -12,7 +12,7 @@ const CHANNELS = [
     link: "https://live-evg17.tv360.metfone.com.kh/LiveApp/streams/eacnews.m3u8",
     thumbnail: "https://ia801501.us.archive.org/19/items/dog_gear_live_Logo/etv-channel.jpg",
     resolve: true
-  },  
+  },    
   {
     title: "KhmerTV",
     link: "https://livefta.malimarcdn.com/ftaedge00/khmertv2020.stream/chunklist.m3u8",

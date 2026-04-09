@@ -1,21 +1,21 @@
-const TYPES = ["series", "movie"];
+const TYPES = ["series", "movie", "channel"];
 const EXTRA = ["search", "skip"];
 
 const sites = [
-  { id: "khmertv", name: "KhmerTV", type: "movie" }, 
-  { id: "vip", name: "PhumiVip", type: "series" },
-  { id: "sunday", name: "SundayDrama", type: "series" },
-  { id: "phumi2", name: "PhumiClub", type: "series" },
-  { id: "khmerave", name: "KhmerAve", type: "series" },
-  { id: "merlkon", name: "Merlkon", type: "series" },
-  { id: "idrama", name: "iDramaHD", type: "series" },
-  { id: "cat3movie", name: "Cat3Movie", type: "movie" },
-  { id: "xvideos", name: "xvideos", type: "movie" },  
+  { id: "khmertv", name: "KhmerTV", type: "channel", enabled: true }, 
+  { id: "vip", name: "PhumiVip", type: "series", enabled: true },
+  { id: "sunday", name: "SundayDrama", type: "series", enabled: true },
+  { id: "phumi2", name: "PhumiClub", type: "series", enabled: true },
+  { id: "khmerave", name: "KhmerAve", type: "series", enabled: true },
+  { id: "merlkon", name: "Merlkon", type: "series", enabled: true },
+  { id: "idrama", name: "iDramaHD", type: "series", enabled: true }, 
+  { id: "cat3movie", name: "Cat3Movie", type: "movie", enabled: true },
+  { id: "xvideos", name: "xvideos", type: "movie", enabled: true }  
 ];
 
 module.exports = {
   id: "community.khmer.stremio",
-  version: "3.5.0",
+  version: "4.5.0",
   name: "KhmerDub",
   description: "Stream contents | Dev: TheDevilz.",
   logo: "https://raw.githubusercontent.com/konrepo/KhmerKodi/refs/heads/main/logo/person.png",
@@ -23,14 +23,78 @@ module.exports = {
   resources: ["catalog", "meta", "stream"],
   types: TYPES,
 
-  catalogs: sites.map(site => ({
-    type: site.type,
-    id: site.id,
-    name: site.name,
-    extraSupported: EXTRA
-  })),
+  catalogs: sites
+    .filter(site => site.enabled !== false)
+    .map(site => {
+      if (site.id === "vip" || site.id === "idrama" || site.id === "sunday") {
+        return {
+          type: site.type,
+          id: site.id,
+          name: site.name,
+          extra: [
+            { name: "search", isRequired: false },
+            { name: "skip", isRequired: false },
+            { name: "genre", isRequired: false, options: ["Thai", "China", "Korean"] }
+          ]
+        };
+      }
+
+      if (site.id === "phumi2") {
+        return {
+          type: site.type,
+          id: site.id,
+          name: site.name,
+          extra: [
+            { name: "search", isRequired: false },
+            { name: "skip", isRequired: false },
+            { name: "genre", isRequired: false, options: ["Khmer", "China", "Korean"] }
+          ]
+        };
+      }
+
+      if (site.id === "khmerave") {
+        return {
+          type: site.type,
+          id: site.id,
+          name: site.name,
+          extra: [
+            { name: "search", isRequired: false },
+            { name: "skip", isRequired: false },
+            { name: "genre", isRequired: false, options: ["Modern", "China", "Korean"] }
+          ]
+        };
+      }
+
+      if (site.id === "merlkon") {
+        return {
+          type: site.type,
+          id: site.id,
+          name: site.name,
+          extra: [
+            { name: "search", isRequired: false },
+            { name: "skip", isRequired: false },
+            { name: "genre", isRequired: false, options: ["Khmer", "Thai", "Indian"] }
+          ]
+        };
+      }
+
+      return {
+        type: site.type,
+        id: site.id,
+        name: site.name,
+        extra: [
+          { name: "search", isRequired: false },
+          { name: "skip", isRequired: false }
+        ]
+      };
+    }),
 
   behaviorHints: {
     configurable: false
+  },
+
+  stremioAddonsConfig: {
+    issuer: "https://stremio-addons.net",
+    signature: "eyJhbGciOiJkaXIiLCJlbmMiOiJBMTI4Q0JDLUhTMjU2In0..H15_k0Iyb4K2d5Gbz4-rwg.FswET_xxG8N5XtMjR6lpbNburR7DMF2Ie5NjMSlaNGneFEM-28ioA1ofdunoYFheKAmgc1t5cboQSOgTbXpjPflnSAY9DSJURdIZxfrrYg_LoOLpDqyIgOHS42t6xOYS.-gPH7tB42CWK0qMRv2HtFw"
   }
-};
+}; 
