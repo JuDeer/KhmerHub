@@ -65,7 +65,9 @@ async function getStream(prefix, seriesUrl, episode) {
     idrama: "iDramaHD",
     khmerave: "KhmerAve",
     merlkon: "Merlkon",
-    phumi2: "PhumiClub"
+    phumi2: "PhumiClub",
+	cat3movie: "Cat3Movie",
+	xvideos: "xVideos"
   };
 
   const providerName = providerNames[prefix] || "KhmerDub";
