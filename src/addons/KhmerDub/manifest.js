@@ -1,6 +1,6 @@
-const config = require("./config");
 const TYPES = ["series", "movie", "channel"];
 const EXTRA = ["search", "skip"];
+const config = require("./sites/config");
 
 const sites = [
   { id: "khmertv", name: "KhmerTV", type: "channel", enabled: true }, 
