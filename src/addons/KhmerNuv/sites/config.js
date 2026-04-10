@@ -89,9 +89,6 @@ module.exports = {
     ...defaultSite,
     baseUrl: "https://www.xvideos.com",
     pageSize: 27,
-    genreUrls: {
-      Best: "/best"
-    },
     categoryMap: {
       Amateur: "/c/Amateur-65",
       Anal: "/c/Anal-12",

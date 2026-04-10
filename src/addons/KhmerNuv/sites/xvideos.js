@@ -42,28 +42,6 @@ function uniq(arr = []) {
   return [...new Set(arr.filter(Boolean))];
 }
 
-async function getXvideosBestCurrentUrl(url) {
-  try {
-    const { data } = await axiosClient.get(url, {
-      headers: HEADERS
-    });
-
-    const $ = cheerio.load(data);
-
-    const href =
-      $(".date-links a.current").attr("href") ||
-      $(".date-links a").first().attr("href") ||
-      "";
-
-    if (!href) return null;
-
-    return absolutize(href).replace(/\/$/, "");
-  } catch (err) {
-    console.error("getXvideosBestCurrentUrl failed:", err.message);
-    return null;
-  }
-}
-
 /* =========================
    EXTRACT SOURCES
 ========================= */
@@ -277,7 +255,6 @@ module.exports = {
   getCatalogItems,
   getEpisodes,
   getStream,
-  getNextPageUrl,
-  getXvideosBestCurrentUrl
+  getNextPageUrl
 
 };

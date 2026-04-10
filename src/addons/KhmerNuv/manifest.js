@@ -87,7 +87,7 @@ module.exports = {
           extra: [
             { name: "search", isRequired: false },
             { name: "skip", isRequired: false },
-            { name: "genre", isRequired: false, options: ["Best", ...Object.keys(config.xvideos.categoryMap || {})] }
+            { name: "genre", isRequired: false, options: Object.keys(config.xvideos.categoryMap || {}) }
           ]
         };
       }

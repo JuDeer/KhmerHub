@@ -423,36 +423,18 @@ module.exports = (builder, deps) => {
         const skip = Number(extra?.skip || 0);
         const targetPage = Math.floor(skip / SKIP_STEP) + 1;
 
-        let url;
+        const categoryPath = site.categoryMap?.[extra.genre];
+        if (!categoryPath) return { metas: [] };
 
-        if (extra.genre === "Best") {
-          const bestPath = String(site.genreUrls?.Best || "").replace(/\/$/, "");
-          if (!bestPath) return { metas: [] };
+        const normalizedPath = String(categoryPath).startsWith("http")
+          ? String(categoryPath).replace(/\/$/, "")
+          : `${base}${String(categoryPath)}`.replace(/\/$/, "");
 
-          const bestEntry = bestPath.startsWith("http")
-            ? bestPath
-            : `${base}${bestPath}`;
-
-          const bestBase = await siteEngine.getXvideosBestCurrentUrl(bestEntry);
-          if (!bestBase) return { metas: [] };
-
-          url = targetPage === 1
-            ? bestBase
-            : `${bestBase}/${targetPage - 1}`;
-        } else {
-          const categoryPath = site.categoryMap?.[extra.genre];
-          if (!categoryPath) return { metas: [] };
-
-          const normalizedPath = String(categoryPath).startsWith("http")
-            ? String(categoryPath).replace(/\/$/, "")
-            : `${base}${String(categoryPath)}`.replace(/\/$/, "");
-
-          url = targetPage === 1
-            ? normalizedPath
-            : normalizedPath.includes("?")
-              ? `${normalizedPath}&p=${targetPage}`
-              : `${normalizedPath}/${targetPage - 1}`;
-        }
+        const url = targetPage === 1
+          ? normalizedPath
+          : normalizedPath.includes("?")
+            ? `${normalizedPath}&p=${targetPage}`
+            : `${normalizedPath}/${targetPage - 1}`;
 
         const items = await siteEngine.getCatalogItems(id, site, url);
         if (!items.length) return { metas: [] };
