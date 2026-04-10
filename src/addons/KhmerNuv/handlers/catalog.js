@@ -431,7 +431,7 @@ module.exports = (builder, deps) => {
 
           url = targetPage === 1
             ? `${bestBase}`
-            : `${bestBase}/${targetPage}`;
+            : `${bestBase}/${targetPage - 1}`;
         } else {
           const categoryPath = site.categoryMap?.[extra.genre];
           if (!categoryPath) return { metas: [] };
@@ -444,7 +444,7 @@ module.exports = (builder, deps) => {
             ? normalizedPath
             : normalizedPath.includes("?")
               ? `${normalizedPath}&p=${targetPage}`
-              : `${normalizedPath}/${targetPage}`;
+              : `${normalizedPath}/${targetPage - 1}`;
         }
 
         const items = await siteEngine.getCatalogItems(id, site, url);
