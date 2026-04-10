@@ -99,7 +99,7 @@ module.exports = {
       Asian: "/c/Asian_Woman-32",
       ASMR: "/c/ASMR-229",
       Ass: "/c/Ass-14",
-      Big Ass: "/c/Big_Ass-24",
+      Big_Ass: "/c/Big_Ass-24",
       Big Cock: "/c/Big_Cock-34",
       Big Tits: "/c/Big_Tits-23",
       Blonde: "/c/Blonde-20",
