@@ -426,20 +426,16 @@ module.exports = (builder, deps) => {
         let url;
 
         if (extra.genre === "Best") {
-          const now = new Date();
-          const year = now.getFullYear();
-          const month = String(now.getMonth() + 1).padStart(2, "0");
-
           const bestPath = String(site.genreUrls?.Best || "").replace(/\/$/, "");
           if (!bestPath) return { metas: [] };
 
-          const bestBase = bestPath.startsWith("http")
-            ? `${bestPath}/${year}-${month}`
-            : `${base}${bestPath}/${year}-${month}`;
+          const bestEntry = bestPath.startsWith("http")
+            ? bestPath
+            : `${base}${bestPath}`;
 
           url = targetPage === 1
-            ? bestBase
-            : `${bestBase}/${targetPage - 1}`;
+            ? bestEntry
+            : `${bestEntry}/${targetPage - 1}`;
         } else {
           const categoryPath = site.categoryMap?.[extra.genre];
           if (!categoryPath) return { metas: [] };
