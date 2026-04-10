@@ -1,3 +1,4 @@
+const config = require("./config");
 const TYPES = ["series", "movie", "channel"];
 const EXTRA = ["search", "skip"];
 
@@ -78,6 +79,19 @@ module.exports = {
         };
       }
 
+      if (site.id === "xvideos") {
+        return {
+          type: site.type,
+          id: site.id,
+          name: site.name,
+          extra: [
+            { name: "search", isRequired: false },
+            { name: "skip", isRequired: false },
+            { name: "genre", isRequired: false, options: ["Best", ...Object.keys(config.xvideos.categoryMap || {})] }
+          ]
+        };
+      }
+
       return {
         type: site.type,
         id: site.id,
@@ -91,10 +105,6 @@ module.exports = {
 
   behaviorHints: {
     configurable: false
-  },
-
-  stremioAddonsConfig: {
-    issuer: "https://stremio-addons.net",
-    signature: "eyJhbGciOiJkaXIiLCJlbmMiOiJBMTI4Q0JDLUhTMjU2In0..H15_k0Iyb4K2d5Gbz4-rwg.FswET_xxG8N5XtMjR6lpbNburR7DMF2Ie5NjMSlaNGneFEM-28ioA1ofdunoYFheKAmgc1t5cboQSOgTbXpjPflnSAY9DSJURdIZxfrrYg_LoOLpDqyIgOHS42t6xOYS.-gPH7tB42CWK0qMRv2HtFw"
   }
+
 }; 

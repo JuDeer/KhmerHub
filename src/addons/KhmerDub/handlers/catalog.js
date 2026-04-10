@@ -276,6 +276,45 @@ module.exports = (builder, deps) => {
         return { metas: mapMetas(uniq, type) };
       }
 
+      // XVideos
+      if (id === "xvideos" && extra?.genre) {
+        const base = String(site.baseUrl || "").replace(/\/$/, "");
+        const pageSize = site.pageSize || 27;
+        const skip = Number(extra?.skip || 0);
+        const page = Math.floor(skip / pageSize) + 1;
+
+        if (extra.genre === "Best") {
+          const bestBase = String(site.genreUrls?.Best || "").replace(/\/$/, "");
+          if (!bestBase) return { metas: [] };
+
+          const url = page === 1
+            ? `${bestBase}`
+            : `${bestBase}/${page}`;
+
+          const items = await siteEngine.getCatalogItems(id, site, url);
+
+          const type = SITE_TYPES[id] || SITE_TYPES.default;
+          return { metas: mapMetas(items, type) };
+        }
+
+        const categoryPath = site.categoryMap?.[extra.genre];
+        if (!categoryPath) return { metas: [] };
+
+        const normalizedPath = String(categoryPath).startsWith("http")
+          ? String(categoryPath)
+          : `${base}${categoryPath}`;
+
+        const url = page === 1
+          ? normalizedPath
+          : normalizedPath.includes("?")
+            ? `${normalizedPath}&p=${page}`
+            : `${normalizedPath}/${page}`;
+
+        const items = await siteEngine.getCatalogItems(id, site, url);
+
+        const type = SITE_TYPES[id] || SITE_TYPES.default;
+        return { metas: mapMetas(items, type) };
+      }
 
       // Phumi2
       if (id === "phumi2" && extra?.genre) {
