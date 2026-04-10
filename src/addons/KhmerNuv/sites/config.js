@@ -90,7 +90,7 @@ module.exports = {
     baseUrl: "https://www.xvideos.com",
     pageSize: 27,
     genreUrls: {
-      Best: "https://www.xvideos.com/best"
+      Best: "/best"
     },
     categoryMap: {
       Amateur: "/c/Amateur-65",
