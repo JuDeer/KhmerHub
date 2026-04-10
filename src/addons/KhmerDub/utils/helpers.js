@@ -81,6 +81,7 @@ function mapMetas(items, type = "series") {
     type,
     name: item.name,
     poster: item.poster,
+	background: item.background || item.fanart || item.poster,
     posterShape: "poster",
     genres: item.genres || [],
     description: item.genres?.length
