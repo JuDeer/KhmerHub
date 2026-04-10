@@ -426,16 +426,12 @@ module.exports = (builder, deps) => {
         let url;
 
         if (extra.genre === "Best") {
-          const bestPath = String(site.genreUrls?.Best || "").replace(/\/$/, "");
-          if (!bestPath) return { metas: [] };
-
-          const bestEntry = bestPath.startsWith("http")
-            ? bestPath
-            : `${base}${bestPath}`;
+          const bestBase = String(site.genreUrls?.Best || "").replace(/\/$/, "");
+          if (!bestBase) return { metas: [] };
 
           url = targetPage === 1
-            ? bestEntry
-            : `${bestEntry}/${targetPage - 1}`;
+            ? `${bestBase}`
+            : `${bestBase}/${targetPage - 1}`;
         } else {
           const categoryPath = site.categoryMap?.[extra.genre];
           if (!categoryPath) return { metas: [] };
