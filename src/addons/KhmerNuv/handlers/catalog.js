@@ -415,6 +415,44 @@ module.exports = (builder, deps) => {
         return { metas: mapMetas(items, "movie") };
       }
 
+      // xVideos genre
+      if (id === "xvideos" && extra?.genre) {
+        const base = String(site.baseUrl || "").replace(/\/$/, "");
+        const SKIP_STEP = 100;
+
+        const skip = Number(extra?.skip || 0);
+        const targetPage = Math.floor(skip / SKIP_STEP) + 1;
+
+        let url;
+
+        if (extra.genre === "Best") {
+          const bestBase = String(site.genreUrls?.Best || "").replace(/\/$/, "");
+          if (!bestBase) return { metas: [] };
+
+          url = targetPage === 1
+            ? `${bestBase}`
+            : `${bestBase}/${targetPage}`;
+        } else {
+          const categoryPath = site.categoryMap?.[extra.genre];
+          if (!categoryPath) return { metas: [] };
+
+          const normalizedPath = String(categoryPath).startsWith("http")
+            ? String(categoryPath).replace(/\/$/, "")
+            : `${base}${String(categoryPath)}`.replace(/\/$/, "");
+
+          url = targetPage === 1
+            ? normalizedPath
+            : normalizedPath.includes("?")
+              ? `${normalizedPath}&p=${targetPage}`
+              : `${normalizedPath}/${targetPage}`;
+        }
+
+        const items = await siteEngine.getCatalogItems(id, site, url);
+        if (!items.length) return { metas: [] };
+
+        return { metas: mapMetas(items, "movie") };
+      }
+
       // xVideos paging
       if (id === "xvideos") {
         const base = String(site.baseUrl || "").replace(/\/$/, "");

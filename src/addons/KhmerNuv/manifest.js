@@ -1,5 +1,6 @@
 const TYPES = ["series", "movie", "channel"];
 const EXTRA = ["search", "skip"];
+const config = require("./sites/config");
 
 const sites = [
   { id: "khmertv", name: "KhmerTV", type: "channel", enabled: true }, 
@@ -74,6 +75,19 @@ module.exports = {
             { name: "search", isRequired: false },
             { name: "skip", isRequired: false },
             { name: "genre", isRequired: false, options: ["Khmer", "Thai", "Indian"] }
+          ]
+        };
+      }
+
+      if (site.id === "xvideos") {
+        return {
+          type: site.type,
+          id: site.id,
+          name: site.name,
+          extra: [
+            { name: "search", isRequired: false },
+            { name: "skip", isRequired: false },
+            { name: "genre", isRequired: false, options: ["Best", ...Object.keys(config.xvideos.categoryMap || {})] }
           ]
         };
       }
