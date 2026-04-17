@@ -1,33 +1,42 @@
 module.exports = (builder, deps) => {
   const { getSiteEngine, SITE_TYPES } = deps;
 
+  /* =========================
+     STREAM
+  ========================= */
   builder.defineStreamHandler(async ({ id }) => {
     try {
       console.log("[STREAM] handler called", { id });
 
       const parts = id.split(":");
       const prefix = parts[0];
-      const encodedUrl = parts.slice(1).join(":");
 
-      console.log("[STREAM] parsed", {
-        prefix,
-        encodedUrl
-      });
-
-      if (!prefix || !encodedUrl) {
-        console.log("[STREAM] missing prefix or encodedUrl");
+      if (!prefix || parts.length < 2) {
+        console.log("[STREAM] invalid id format");
         return { streams: [] };
       }
 
       const siteType = SITE_TYPES[prefix] || SITE_TYPES.default;
       const isSingleItem = siteType === "movie" || siteType === "channel";
+
+      const encodedUrl = isSingleItem
+        ? parts.slice(1).join(":")
+        : parts.slice(1, -1).join(":");
+
       const epNum = isSingleItem ? 1 : Number(parts[parts.length - 1]);
 
-      console.log("[STREAM] type info", {
+      console.log("[STREAM] parsed", {
+        prefix,
         siteType,
         isSingleItem,
+        encodedUrl,
         epNum
       });
+
+      if (!encodedUrl) {
+        console.log("[STREAM] missing encodedUrl");
+        return { streams: [] };
+      }
 
       if (!isSingleItem && (!Number.isInteger(epNum) || epNum <= 0)) {
         console.log("[STREAM] invalid episode number");
