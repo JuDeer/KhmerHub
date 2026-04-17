@@ -298,18 +298,27 @@ function getNextPageUrl(base, html) {
 async function getEpisodes(prefix, url) {
   const detail = await getDetail(url);
 
+  console.log("[CAT3] getEpisodes", {
+    prefix,
+    url,
+    hasDetail: !!detail,
+    title: detail?.title
+  });
+
   if (!detail) return [];
 
-  return [
-    {
-      id: `${prefix}:${encodeURIComponent(url)}`,
-      title: detail.category ? `[${detail.category}] ${detail.title}` : detail.title,
-      season: 1,
-      episode: 1,
-      thumbnail: detail.poster,
-      description: detail.category ? `Category: ${detail.category}` : ""
-    }
-  ];
+  const episode = {
+    id: `${prefix}:${encodeURIComponent(url)}`,
+    title: detail.category ? `[${detail.category}] ${detail.title}` : detail.title,
+    season: 1,
+    episode: 1,
+    thumbnail: detail.poster,
+    description: detail.category ? `Category: ${detail.category}` : ""
+  };
+
+  console.log("[CAT3] getEpisodes return", episode);
+
+  return [episode];
 }
 
 /* =========================
@@ -317,7 +326,14 @@ async function getEpisodes(prefix, url) {
 ========================= */
 async function getStream(prefix, url, epNum = 1) {
   try {
+    console.log("[CAT3] getStream start", { url, epNum });
+
     const detail = await getDetail(url);
+    console.log("[CAT3] detail", {
+      hasDetail: !!detail,
+      sources: detail?.sources?.length || 0,
+      title: detail?.title
+    });
 
     const { data } = await axiosClient.get(url, {
       headers: {
@@ -325,36 +341,53 @@ async function getStream(prefix, url, epNum = 1) {
         Referer: BASE_URL + "/"
       }
     });
+    console.log("[CAT3] page fetched");
 
     const serverLinks = extractServerLinks(data, url);
+    console.log("[CAT3] serverLinks", {
+      count: serverLinks.length,
+      sample: serverLinks.slice(0, 5)
+    });
+
     const finalSources = [...(detail?.sources || [])];
 
     for (const serverUrl of serverLinks) {
+      console.log("[CAT3] processing", serverUrl);
+
       if (!serverUrl) continue;
 
       if (isDirectVideoUrl(serverUrl)) {
+        console.log("[CAT3] direct video", serverUrl);
         finalSources.push(serverUrl);
         continue;
       }
 
       if (/play\.cat3movie\.club\/embed\//i.test(serverUrl)) {
         const embedSources = await resolveCat3Embed(serverUrl);
+        console.log("[CAT3] embedSources", {
+          serverUrl,
+          count: embedSources.length,
+          sample: embedSources.slice(0, 5)
+        });
         finalSources.push(...embedSources);
         continue;
       }
 
       if (/playhydrax\.com|hydrax/i.test(serverUrl)) {
+        console.log("[CAT3] hydrax link", serverUrl);
         finalSources.push(serverUrl);
         continue;
       }
 
       if (/ok\.ru\/videoembed\//i.test(serverUrl)) {
+        console.log("[CAT3] ok.ru link", serverUrl);
         finalSources.push(serverUrl);
         continue;
       }
 
-      // fallback: inspect unknown player pages
       try {
+        console.log("[CAT3] fallback fetch", serverUrl);
+
         const { data: playerHtml } = await axiosClient.get(serverUrl, {
           headers: {
             ...HEADERS,
@@ -363,35 +396,74 @@ async function getStream(prefix, url, epNum = 1) {
         });
 
         const embeddedDirect = extractSources(playerHtml);
+        console.log("[CAT3] fallback direct", {
+          serverUrl,
+          count: embeddedDirect.length,
+          sample: embeddedDirect.slice(0, 5)
+        });
+
         if (embeddedDirect.length) {
           finalSources.push(...embeddedDirect);
         }
 
         const nestedLinks = extractServerLinks(playerHtml, serverUrl);
+        console.log("[CAT3] nestedLinks", {
+          serverUrl,
+          count: nestedLinks.length,
+          sample: nestedLinks.slice(0, 5)
+        });
+
         for (const nested of nestedLinks) {
           if (!nested) continue;
 
           if (isDirectVideoUrl(nested)) {
+            console.log("[CAT3] nested direct", nested);
             finalSources.push(nested);
             continue;
           }
 
           if (/play\.cat3movie\.club\/embed\//i.test(nested)) {
             const embedSources = await resolveCat3Embed(nested);
+            console.log("[CAT3] nested embedSources", {
+              nested,
+              count: embedSources.length,
+              sample: embedSources.slice(0, 5)
+            });
             finalSources.push(...embedSources);
             continue;
           }
 
           if (/playhydrax\.com|hydrax|ok\.ru\/videoembed\//i.test(nested)) {
+            console.log("[CAT3] nested host link", nested);
             finalSources.push(nested);
           }
         }
-      } catch {}
+      } catch (e) {
+        console.log("[CAT3] fallback ERROR", {
+          serverUrl,
+          error: e?.message || String(e)
+        });
+      }
     }
+
+    console.log("[CAT3] finalSources BEFORE uniq/filter", {
+      count: finalSources.length,
+      sample: finalSources.slice(0, 10)
+    });
 
     const uniqueSources = uniq(finalSources).filter(isLikelyPlayableHost);
 
-    if (!uniqueSources.length) return null;
+    console.log("[CAT3] finalSources AFTER uniq/filter", {
+      count: uniqueSources.length,
+      sample: uniqueSources.slice(0, 10)
+    });
+
+    if (!uniqueSources.length) {
+      console.log("[CAT3] NO STREAM FOUND");
+      return null;
+    }
+
+    console.log("[CAT3] returning streams", uniqueSources.length);
 
     return uniqueSources.map((src, index) =>
       buildStream(
@@ -403,7 +475,8 @@ async function getStream(prefix, url, epNum = 1) {
         url
       )
     );
-  } catch {
+  } catch (e) {
+    console.log("[CAT3] getStream ERROR", e?.message || String(e));
     return null;
   }
 }
