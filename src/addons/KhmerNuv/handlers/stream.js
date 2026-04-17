@@ -6,10 +6,8 @@ module.exports = (builder, deps) => {
       console.log("[STREAM] handler called", { id });
 
       const parts = id.split(":");
-      console.log("[STREAM] parts", parts);
-
       const prefix = parts[0];
-      const encodedUrl = parts[1];
+      const encodedUrl = parts.slice(1).join(":");
 
       console.log("[STREAM] parsed", {
         prefix,
@@ -37,8 +35,6 @@ module.exports = (builder, deps) => {
       }
 
       const ctx = getSiteEngine(prefix);
-      console.log("[STREAM] ctx", { hasCtx: !!ctx });
-
       if (!ctx) {
         console.log("[STREAM] no site engine for prefix", prefix);
         return { streams: [] };
@@ -48,7 +44,6 @@ module.exports = (builder, deps) => {
       const seriesUrl = decodeURIComponent(encodedUrl);
 
       console.log("[STREAM] decoded url", { seriesUrl });
-      console.log("[STREAM] calling siteEngine.getStream");
 
       const stream = await siteEngine.getStream(prefix, seriesUrl, epNum);
 
