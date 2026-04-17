@@ -313,7 +313,8 @@ async function getEpisodes(prefix, url) {
     season: 1,
     episode: 1,
     thumbnail: detail.poster,
-    description: detail.category ? `Category: ${detail.category}` : ""
+    description: detail.category ? `Category: ${detail.category}` : "",
+    genres: detail.category ? [detail.category] : []
   };
 
   console.log("[CAT3] getEpisodes return", episode);
