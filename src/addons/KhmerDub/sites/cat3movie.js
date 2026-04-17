@@ -4,7 +4,7 @@ const axiosClient = require("../utils/fetch");
 const { normalizePoster, uniqById } = require("../utils/helpers");
 const { buildStream } = require("../utils/streamResolvers");
 
-const DEBUG = false;
+const DEBUG = true;
 const log = (...args) => DEBUG && log(...args);
 
 /* =========================

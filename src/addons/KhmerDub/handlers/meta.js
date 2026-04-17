@@ -1,6 +1,6 @@
 module.exports = (builder, deps) => {
   const { getSiteEngine, SITE_TYPES } = deps;
-  const DEBUG = false;
+  const DEBUG = true;
   const log = (...args) => DEBUG && log(...args);  
 
   /* =========================
