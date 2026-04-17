@@ -19,9 +19,16 @@ module.exports = (builder, deps) => {
       const siteType = SITE_TYPES[prefix] || SITE_TYPES.default;
       const isSingleItem = siteType === "movie" || siteType === "channel";
 
-      const encodedUrl = isSingleItem
-        ? parts.slice(1).join(":")
-        : parts.slice(1, -1).join(":");
+      let encodedUrl;
+      let epNum;
+
+      if (isSingleItem) {
+        encodedUrl = parts.slice(1).join(":");
+        epNum = 1;
+      } else {
+        encodedUrl = parts[1]; 
+        epNum = Number(parts[parts.length - 1]); // last = episode
+      }
 
       const epNum = isSingleItem ? 1 : Number(parts[parts.length - 1]);
 
