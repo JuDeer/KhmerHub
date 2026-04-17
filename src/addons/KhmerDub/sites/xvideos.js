@@ -4,9 +4,6 @@ const axiosClient = require("../utils/fetch");
 const { normalizePoster, uniqById } = require("../utils/helpers");
 const { buildStream } = require("../utils/streamResolvers");
 
-const DEBUG = true;
-const log = (...args) => DEBUG && console.log(...args);
-  
 /* =========================
    CONFIG
 ========================= */
@@ -220,12 +217,16 @@ async function getEpisodes(prefix, seriesUrl) {
 
   return [
     {
-      id: `${prefix}:${encodeURIComponent(seriesUrl)}`, 
+      id: 1,
+      url: seriesUrl,
       title: detail.title,
       season: 1,
       episode: 1,
       thumbnail: detail.poster,
-      description: detail.title
+      released: new Date().toISOString(),
+      behaviorHints: {
+        group: `${prefix}:${encodeURIComponent(seriesUrl)}`
+      }
     }
   ];
 }

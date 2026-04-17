@@ -4,9 +4,6 @@ const axiosClient = require("../utils/fetch");
 const { normalizePoster, uniqById } = require("../utils/helpers");
 const { buildStream } = require("../utils/streamResolvers");
 
-const DEBUG = true;
-const log = (...args) => DEBUG && console.log(...args);
-
 /* =========================
    CONFIG
 ========================= */
@@ -45,27 +42,9 @@ function uniq(arr) {
   return [...new Set(arr.filter(Boolean))];
 }
 
-function isDirectVideoUrl(url = "") {
-  return (
-    /^https?:\/\//i.test(url) &&
-    (/\.(mp4|m3u8)(\?|$)/i.test(url) ||
-      /\/video\//i.test(url) ||
-      /master\.m3u8/i.test(url))
-  );
-}
-
-function isLikelyPlayableHost(url = "") {
-  return (
-    /play\.cat3movie\.club\/embed\//i.test(url) ||
-    /playhydrax\.com/i.test(url) ||
-    /hydrax/i.test(url) ||
-    /ok\.ru\/videoembed\//i.test(url) ||
-    isDirectVideoUrl(url)
-  );
-}
-
 async function resolveCat3Embed(embedUrl) {
   try {
+
     const { data } = await axiosClient.get(embedUrl, {
       headers: {
         ...HEADERS,
@@ -73,19 +52,9 @@ async function resolveCat3Embed(embedUrl) {
       }
     });
 
-    const html = String(data || "")
-      .replace(/\\\//g, "/")
-      .replace(/&amp;/g, "&");
-
-    const directSources = extractSources(html);
-    if (directSources.length) {
-      return uniq(directSources);
-    }
-
     const apiMatch =
-      html.match(/url\s*:\s*"([^"]*\/api\/\?[^"]+)"/i) ||
-      html.match(/url\s*:\s*'([^']*\/api\/\?[^']+)'/i) ||
-      html.match(/["'](https?:\/\/[^"']*\/api\/\?[^"']+)["']/i);
+      data.match(/url\s*:\s*"([^"]*\/api\/\?[^"]+)"/i) ||
+      data.match(/url\s*:\s*'([^']*\/api\/\?[^']+)'/i);
 
     if (!apiMatch || !apiMatch[1]) {
       return [];
@@ -118,7 +87,7 @@ async function resolveCat3Embed(embedUrl) {
       : [];
 
     return uniq(sources);
-  } catch {
+  } catch (e) {
     return [];
   }
 }
@@ -127,20 +96,16 @@ async function resolveCat3Embed(embedUrl) {
    JWPLAYER PARSER
 ========================= */
 function extractSources(html) {
-  const text = String(html || "")
-    .replace(/\\\//g, "/")
-    .replace(/&amp;/g, "&");
-
-  const matches = [
-    ...text.matchAll(/file\s*:\s*["']([^"']+)["']/gi),
-    ...text.matchAll(/src\s*:\s*["']([^"']+)["']/gi),
-    ...text.matchAll(/["'](https?:\/\/[^"']+\.m3u8[^"']*)["']/gi),
-    ...text.matchAll(/["'](https?:\/\/[^"']+\.mp4[^"']*)["']/gi)
-  ];
-
-  const sources = matches
-    .map((m) => String(m[1] || "").trim())
-    .filter((url) => url && url !== "#" && isDirectVideoUrl(url));
+  const sources = [
+    ...html.matchAll(/file\s*:\s*["']([^"']+)["']/gi)
+  ]
+    .map(m => String(m[1] || "").trim())
+    .filter(url =>
+      url &&
+      url !== "#" &&
+      /^https?:\/\//i.test(url) &&
+      (/\.(mp4|m3u8)(\?|$)/i.test(url) || /\/video\//i.test(url))
+    );
 
   return uniq(sources);
 }
@@ -149,36 +114,15 @@ function extractServerLinks(html, pageUrl) {
   const $ = cheerio.load(html);
   const links = [];
 
-  $("iframe").each((_, el) => {
-    const src = $(el).attr("src") || $(el).attr("data-src");
-    if (src) links.push(absolutize(src, pageUrl));
+  const iframeSrc = $("#movie-player iframe").attr("src");
+  if (iframeSrc) links.push(absolutize(iframeSrc, pageUrl));
+
+  $("#server-list a").each((_, el) => {
+    const href = $(el).attr("href");
+    if (href) links.push(absolutize(href, pageUrl));
   });
 
-  $("a, button, div").each((_, el) => {
-    const attrs = ["href", "data-src", "data-link", "data-url", "data-embed"];
-    for (const attr of attrs) {
-      const val = $(el).attr(attr);
-      if (val && /^(https?:)?\/\//i.test(val)) {
-        links.push(absolutize(val, pageUrl));
-      }
-    }
-  });
-
-  const regexLinks = [...String(html || "").matchAll(/https?:\/\/[^"'<> ]+/gi)].map(
-    (m) => m[0]
-  );
-
-  links.push(...regexLinks);
-
-  return uniq(
-    links.filter(
-      (link) =>
-        link &&
-        !/google|facebook|twitter|instagram|pinterest|doubleclick|schema\.org/i.test(
-          link
-        )
-    )
-  );
+  return uniq(links);
 }
 
 /* =========================
@@ -186,19 +130,17 @@ function extractServerLinks(html, pageUrl) {
 ========================= */
 async function getDetail(url) {
   try {
+
     const { data } = await axiosClient.get(url, {
-      headers: {
-        ...HEADERS,
-        Referer: BASE_URL + "/"
-      }
+      headers: HEADERS
     });
 
     const $ = cheerio.load(data);
 
     const title = cleanMovieTitle(
       $("h1.single-post-title").text() ||
-        $('meta[property="og:title"]').attr("content") ||
-        $("title").text()
+      $('meta[property="og:title"]').attr("content") ||
+      $("title").text()
     );
 
     let poster =
@@ -209,7 +151,10 @@ async function getDetail(url) {
     poster = normalizePoster(absolutize(poster, url));
 
     const category =
-      $('nav[aria-label="Breadcrumbs"] .bf-breadcrumb-item a').last().text().trim() ||
+      $('nav[aria-label="Breadcrumbs"] .bf-breadcrumb-item a')
+        .last()
+        .text()
+        .trim() ||
       $(".term-badges.floated .term-badge a").first().text().trim() ||
       "";
 
@@ -221,7 +166,8 @@ async function getDetail(url) {
       category,
       sources
     };
-  } catch {
+	
+  } catch (e) {
     return null;
   }
 }
@@ -234,23 +180,22 @@ async function getCatalogItems(prefix, siteConfig, url) {
     const pageUrl = url || BASE_URL;
 
     const { data } = await axiosClient.get(pageUrl, {
-      headers: {
-        ...HEADERS,
-        Referer: BASE_URL + "/"
-      }
+      headers: HEADERS
     });
 
     const $ = cheerio.load(data);
 
     const posts = $("article[class*='listing-item']").toArray();
 
-    const results = posts.map((el) => {
+    const results = posts.map(el => {
       const $el = $(el);
 
       const linkEl = $el.find("h2.title a").first();
 
       const link = absolutize(linkEl.attr("href"), pageUrl);
-      const title = cleanMovieTitle(linkEl.attr("title") || linkEl.text());
+      const title = cleanMovieTitle(
+        linkEl.attr("title") || linkEl.text()
+      );
 
       if (!link || !title) return null;
 
@@ -272,7 +217,7 @@ async function getCatalogItems(prefix, siteConfig, url) {
         id: `${prefix}:${encodeURIComponent(link)}`,
         name: category ? `[${category}] ${title}` : title,
         poster,
-        genres: category ? [category] : []
+		genres: category ? [category] : []
       };
     });
 
@@ -301,133 +246,69 @@ function getNextPageUrl(base, html) {
 async function getEpisodes(prefix, url) {
   const detail = await getDetail(url);
 
-  log("[CAT3] getEpisodes", {
-    prefix,
-    url,
-    hasDetail: !!detail,
-    title: detail?.title
-  });
-
   if (!detail) return [];
 
-  const episode = {
-    id: `${prefix}:${encodeURIComponent(url)}`,
-    title: detail.category ? `[${detail.category}] ${detail.title}` : detail.title,
-    season: 1,
-    episode: 1,
-    thumbnail: detail.poster,
-    description: detail.category ? `Category: ${detail.category}` : "",
-    genres: detail.category ? [detail.category] : []
-  };
-
-  log("[CAT3] getEpisodes return", episode);
-
-  return [episode];
+  return [
+    {
+      id: `${prefix}:${encodeURIComponent(url)}`,
+      title: detail.category ? `[${detail.category}] ${detail.title}` : detail.title,
+      season: 1,
+      episode: 1,
+      thumbnail: detail.poster,
+      description: detail.category ? `Category: ${detail.category}` : ""
+    }
+  ];
 }
 
 /* =========================
    STREAM
 ========================= */
 async function getStream(prefix, url, epNum = 1) {
+
   try {
-    log("[CAT3] getStream start", { url, epNum });
-
     const detail = await getDetail(url);
-    log("[CAT3] detail", {
-      hasDetail: !!detail,
-      sources: detail?.sources?.length || 0,
-      title: detail?.title,
-      sample: detail?.sources?.slice(0, 5) || []
-    });
-
-    // Fast path: direct JWPlayer sources already found on page
-    if (detail?.sources?.length) {
-      log("[CAT3] using direct detail.sources");
-
-      return uniq(detail.sources).map((src, index) =>
-        buildStream(
-          src,
-          epNum,
-          detail?.title || "Cat3Movie",
-          detail.sources.length > 1 ? `Server ${index + 1}` : "Cat3Movie",
-          "cat3",
-          url
-        )
-      );
-    }
 
     const { data } = await axiosClient.get(url, {
-      headers: {
-        ...HEADERS,
-        Referer: BASE_URL + "/"
-      }
+      headers: HEADERS
     });
-    log("[CAT3] page fetched");
 
     const serverLinks = extractServerLinks(data, url);
-    log("[CAT3] serverLinks", {
-      count: serverLinks.length,
-      sample: serverLinks.slice(0, 5)
-    });
 
-    const finalSources = [];
+    const finalSources = [...(detail?.sources || [])];
 
     for (const serverUrl of serverLinks) {
-      log("[CAT3] processing", serverUrl);
-
-      if (!serverUrl) continue;
-
-      if (isDirectVideoUrl(serverUrl)) {
+	  
+      if (/\.(m3u8|mp4)(\?|$)/i.test(serverUrl)) {
         finalSources.push(serverUrl);
         continue;
       }
 
       if (/play\.cat3movie\.club\/embed\//i.test(serverUrl)) {
         const embedSources = await resolveCat3Embed(serverUrl);
-        log("[CAT3] embedSources", {
-          serverUrl,
-          count: embedSources.length,
-          sample: embedSources.slice(0, 5)
-        });
         finalSources.push(...embedSources);
         continue;
       }
 
-      if (/playhydrax\.com|hydrax|ok\.ru\/videoembed\//i.test(serverUrl)) {
+      if (/playhydrax\.com/i.test(serverUrl)) {
         finalSources.push(serverUrl);
         continue;
       }
     }
 
-    log("[CAT3] finalSources BEFORE uniq", {
-      count: finalSources.length,
-      sample: finalSources.slice(0, 10)
-    });
-
     const uniqueSources = uniq(finalSources);
 
-    log("[CAT3] finalSources AFTER uniq", {
-      count: uniqueSources.length,
-      sample: uniqueSources.slice(0, 10)
-    });
+    if (!uniqueSources.length) return null;
 
-    if (!uniqueSources.length) {
-      log("[CAT3] NO STREAM FOUND");
-      return null;
-    }
-
-    log("[CAT3] returning fallback streams", uniqueSources.length);
-
-    return [buildStream(
-      uniqueSources[0],
-      epNum,
-      detail?.title || "Cat3Movie",
-      "Cat3Movie",
-      "cat3",
-      url
-    )];
+    return uniqueSources.map((src, index) =>
+      buildStream(
+        src,
+        epNum,
+        detail?.title || "Cat3Movie",
+        uniqueSources.length > 1 ? `Server ${index + 1}` : "Cat3Movie",
+        "cat3"
+      )
+    );
   } catch (e) {
-    log("[CAT3] getStream ERROR", e?.message || String(e));
     return null;
   }
 }
@@ -437,4 +318,5 @@ module.exports = {
   getEpisodes,
   getStream,
   getNextPageUrl
+
 };

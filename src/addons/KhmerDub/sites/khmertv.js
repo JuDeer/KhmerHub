@@ -75,7 +75,7 @@ async function getEpisodes(prefix, seriesUrl) {
 
   return [
     {
-      id: `${prefix}:${encodeURIComponent(seriesUrl)}`,
+      id: `${prefix}:${encodeURIComponent(seriesUrl)}:1:1`,
       title: channel.title,
       season: 1,
       episode: 1,
