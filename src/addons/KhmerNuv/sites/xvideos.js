@@ -1,18 +1,18 @@
-log( cheerio = require("cheerio");
-log( axiosClient = require("../utils/fetch");
+const cheerio = require("cheerio");
+const axiosClient = require("../utils/fetch");
 
-log( { normalizePoster, uniqById } = require("../utils/helpers");
-log( { buildStream } = require("../utils/streamResolvers");
+const { normalizePoster, uniqById } = require("../utils/helpers");
+const { buildStream } = require("../utils/streamResolvers");
 
-log( DEBUG = false;
-log( log = (...args) => DEBUG && console.log(...args);
+const DEBUG = false;
+const log = (...args) => DEBUG && log(...args);
   
 /* =========================
    CONFIG
 ========================= */
-log( BASE_URL = "https://www.xvideos.com";
+const BASE_URL = "https://www.xvideos.com";
 
-log( HEADERS = {
+const HEADERS = {
   "User-Agent":
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120 Safari/537.36",
   Referer: `${BASE_URL}/`
@@ -50,13 +50,13 @@ function uniq(arr = []) {
 ========================= */
 function extractJsonLdContentUrl(html = "") {
   try {
-    log( matches = [
+    const matches = [
       ...html.matchAll(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/gi)
     ];
 
-    for (log( m of matches) {
-      log( raw = m[1];
-      log( json = JSON.parse(raw);
+    for (const m of matches) {
+      const raw = m[1];
+      const json = JSON.parse(raw);
       if (json?.contentUrl) {
         return decodeEscapedUrl(json.contentUrl);
       }
@@ -67,29 +67,29 @@ function extractJsonLdContentUrl(html = "") {
 }
 
 function extractPlayerSources(html = "") {
-  log( found = [];
+  const found = [];
 
-  log( patterns = [
+  const patterns = [
     /html5player\.setVideoHLS\(['"]([^'"]+)['"]\)/gi,
     /html5player\.setVideoUrlHigh\(['"]([^'"]+)['"]\)/gi,
     /html5player\.setVideoUrlLow\(['"]([^'"]+)['"]\)/gi
   ];
 
-  for (log( re of patterns) {
+  for (const re of patterns) {
     let match;
     while ((match = re.exec(html)) !== null) {
       found.push(decodeEscapedUrl(match[1]));
     }
   }
 
-  log( jsonLd = extractJsonLdContentUrl(html);
+  const jsonLd = extractJsonLdContentUrl(html);
   if (jsonLd) found.push(jsonLd);
 
   return uniq(found);
 }
 
 function getQualityScore(url = "") {
-  log( u = String(url || "").toLowerCase();
+  const u = String(url || "").toLowerCase();
 
   if (/\.m3u8(\?|$)/i.test(u)) return 1000;
 
@@ -122,10 +122,10 @@ function pickHighestQualitySource(sources = []) {
 ========================= */
 async function getDetail(url) {
   try {
-    log( { data } = await axiosClient.get(url, { headers: HEADERS });
-    log( $ = cheerio.load(data);
+    const { data } = await axiosClient.get(url, { headers: HEADERS });
+    const $ = cheerio.load(data);
 
-    log( title = cleanTitle(
+    const title = cleanTitle(
       $("h2.page-title").text() ||
       $('meta[property="og:title"]').attr("content") ||
       $("title").text()
@@ -134,8 +134,8 @@ async function getDetail(url) {
     let poster = $('meta[property="og:image"]').attr("content") || "";
     poster = normalizePoster(poster);
 
-    log( sources = extractPlayerSources(data);
-    log( bestSource = pickHighestQualitySource(sources);
+    const sources = extractPlayerSources(data);
+    const bestSource = pickHighestQualitySource(sources);
 
     return {
       title,
@@ -153,31 +153,31 @@ async function getDetail(url) {
 ========================= */
 async function getCatalogItems(prefix, siteConfig, url) {
   try {
-    log( pageUrl = url || `${BASE_URL}/`;
+    const pageUrl = url || `${BASE_URL}/`;
 
-    log( { data } = await axiosClient.get(pageUrl, {
+    const { data } = await axiosClient.get(pageUrl, {
       headers: HEADERS
     });
 
-    log( $ = cheerio.load(data);
+    const $ = cheerio.load(data);
 
-    log( items = $(".thumb-block")
+    const items = $(".thumb-block")
       .not(".video-suggest")
       .toArray();
 
-    log( results = items
+    const results = items
       .map((el) => {
-        log( $el = $(el);
+        const $el = $(el);
 
-        log( titleEl = $el.find("p.title a").first();
-        log( imgEl = $el.find("img").first();
+        const titleEl = $el.find("p.title a").first();
+        const imgEl = $el.find("img").first();
 
-        log( link = titleEl.attr("href") || $el.find("a").first().attr("href") || "";
-        log( title = cleanTitle(
+        const link = titleEl.attr("href") || $el.find("a").first().attr("href") || "";
+        const title = cleanTitle(
           titleEl.attr("title") ||
           titleEl.text()
         );
-        log( poster =
+        const poster =
           imgEl.attr("data-src") ||
           imgEl.attr("src") ||
           "";
@@ -202,9 +202,9 @@ async function getCatalogItems(prefix, siteConfig, url) {
    NEXT PAGE
 ========================= */
 function getNextPageUrl(base, html) {
-  log( $ = cheerio.load(html);
+  const $ = cheerio.load(html);
 
-  log( next =
+  const next =
     $(".pagination .next-page").attr("href") ||
     $(".pagination a[rel='next']").attr("href");
 
@@ -215,7 +215,7 @@ function getNextPageUrl(base, html) {
    EPISODES (single video)
 ========================= */
 async function getEpisodes(prefix, seriesUrl) {
-  log( detail = await getDetail(seriesUrl);
+  const detail = await getDetail(seriesUrl);
   if (!detail) return [];
 
   return [
@@ -235,7 +235,7 @@ async function getEpisodes(prefix, seriesUrl) {
 ========================= */
 async function getStream(prefix, episodeUrl, episode = 1) {
   try {
-    log( detail = await getDetail(episodeUrl);
+    const detail = await getDetail(episodeUrl);
     if (!detail || !detail.videoUrl) return null;
 
     return buildStream(
