@@ -42,9 +42,27 @@ function uniq(arr) {
   return [...new Set(arr.filter(Boolean))];
 }
 
+function isDirectVideoUrl(url = "") {
+  return (
+    /^https?:\/\//i.test(url) &&
+    (/\.(mp4|m3u8)(\?|$)/i.test(url) ||
+      /\/video\//i.test(url) ||
+      /master\.m3u8/i.test(url))
+  );
+}
+
+function isLikelyPlayableHost(url = "") {
+  return (
+    /play\.cat3movie\.club\/embed\//i.test(url) ||
+    /playhydrax\.com/i.test(url) ||
+    /hydrax/i.test(url) ||
+    /ok\.ru\/videoembed\//i.test(url) ||
+    isDirectVideoUrl(url)
+  );
+}
+
 async function resolveCat3Embed(embedUrl) {
   try {
-
     const { data } = await axiosClient.get(embedUrl, {
       headers: {
         ...HEADERS,
@@ -52,9 +70,19 @@ async function resolveCat3Embed(embedUrl) {
       }
     });
 
+    const html = String(data || "")
+      .replace(/\\\//g, "/")
+      .replace(/&amp;/g, "&");
+
+    const directSources = extractSources(html);
+    if (directSources.length) {
+      return uniq(directSources);
+    }
+
     const apiMatch =
-      data.match(/url\s*:\s*"([^"]*\/api\/\?[^"]+)"/i) ||
-      data.match(/url\s*:\s*'([^']*\/api\/\?[^']+)'/i);
+      html.match(/url\s*:\s*"([^"]*\/api\/\?[^"]+)"/i) ||
+      html.match(/url\s*:\s*'([^']*\/api\/\?[^']+)'/i) ||
+      html.match(/["'](https?:\/\/[^"']*\/api\/\?[^"']+)["']/i);
 
     if (!apiMatch || !apiMatch[1]) {
       return [];
@@ -87,7 +115,7 @@ async function resolveCat3Embed(embedUrl) {
       : [];
 
     return uniq(sources);
-  } catch (e) {
+  } catch {
     return [];
   }
 }
@@ -96,16 +124,20 @@ async function resolveCat3Embed(embedUrl) {
    JWPLAYER PARSER
 ========================= */
 function extractSources(html) {
-  const sources = [
-    ...html.matchAll(/file\s*:\s*["']([^"']+)["']/gi)
-  ]
-    .map(m => String(m[1] || "").trim())
-    .filter(url =>
-      url &&
-      url !== "#" &&
-      /^https?:\/\//i.test(url) &&
-      (/\.(mp4|m3u8)(\?|$)/i.test(url) || /\/video\//i.test(url))
-    );
+  const text = String(html || "")
+    .replace(/\\\//g, "/")
+    .replace(/&amp;/g, "&");
+
+  const matches = [
+    ...text.matchAll(/file\s*:\s*["']([^"']+)["']/gi),
+    ...text.matchAll(/src\s*:\s*["']([^"']+)["']/gi),
+    ...text.matchAll(/["'](https?:\/\/[^"']+\.m3u8[^"']*)["']/gi),
+    ...text.matchAll(/["'](https?:\/\/[^"']+\.mp4[^"']*)["']/gi)
+  ];
+
+  const sources = matches
+    .map((m) => String(m[1] || "").trim())
+    .filter((url) => url && url !== "#" && isDirectVideoUrl(url));
 
   return uniq(sources);
 }
@@ -114,15 +146,36 @@ function extractServerLinks(html, pageUrl) {
   const $ = cheerio.load(html);
   const links = [];
 
-  const iframeSrc = $("#movie-player iframe").attr("src");
-  if (iframeSrc) links.push(absolutize(iframeSrc, pageUrl));
-
-  $("#server-list a").each((_, el) => {
-    const href = $(el).attr("href");
-    if (href) links.push(absolutize(href, pageUrl));
+  $("iframe").each((_, el) => {
+    const src = $(el).attr("src") || $(el).attr("data-src");
+    if (src) links.push(absolutize(src, pageUrl));
   });
 
-  return uniq(links);
+  $("a, button, div").each((_, el) => {
+    const attrs = ["href", "data-src", "data-link", "data-url", "data-embed"];
+    for (const attr of attrs) {
+      const val = $(el).attr(attr);
+      if (val && /^(https?:)?\/\//i.test(val)) {
+        links.push(absolutize(val, pageUrl));
+      }
+    }
+  });
+
+  const regexLinks = [...String(html || "").matchAll(/https?:\/\/[^"'<> ]+/gi)].map(
+    (m) => m[0]
+  );
+
+  links.push(...regexLinks);
+
+  return uniq(
+    links.filter(
+      (link) =>
+        link &&
+        !/google|facebook|twitter|instagram|pinterest|doubleclick|schema\.org/i.test(
+          link
+        )
+    )
+  );
 }
 
 /* =========================
@@ -130,17 +183,19 @@ function extractServerLinks(html, pageUrl) {
 ========================= */
 async function getDetail(url) {
   try {
-
     const { data } = await axiosClient.get(url, {
-      headers: HEADERS
+      headers: {
+        ...HEADERS,
+        Referer: BASE_URL + "/"
+      }
     });
 
     const $ = cheerio.load(data);
 
     const title = cleanMovieTitle(
       $("h1.single-post-title").text() ||
-      $('meta[property="og:title"]').attr("content") ||
-      $("title").text()
+        $('meta[property="og:title"]').attr("content") ||
+        $("title").text()
     );
 
     let poster =
@@ -151,10 +206,7 @@ async function getDetail(url) {
     poster = normalizePoster(absolutize(poster, url));
 
     const category =
-      $('nav[aria-label="Breadcrumbs"] .bf-breadcrumb-item a')
-        .last()
-        .text()
-        .trim() ||
+      $('nav[aria-label="Breadcrumbs"] .bf-breadcrumb-item a').last().text().trim() ||
       $(".term-badges.floated .term-badge a").first().text().trim() ||
       "";
 
@@ -166,8 +218,7 @@ async function getDetail(url) {
       category,
       sources
     };
-	
-  } catch (e) {
+  } catch {
     return null;
   }
 }
@@ -180,22 +231,23 @@ async function getCatalogItems(prefix, siteConfig, url) {
     const pageUrl = url || BASE_URL;
 
     const { data } = await axiosClient.get(pageUrl, {
-      headers: HEADERS
+      headers: {
+        ...HEADERS,
+        Referer: BASE_URL + "/"
+      }
     });
 
     const $ = cheerio.load(data);
 
     const posts = $("article[class*='listing-item']").toArray();
 
-    const results = posts.map(el => {
+    const results = posts.map((el) => {
       const $el = $(el);
 
       const linkEl = $el.find("h2.title a").first();
 
       const link = absolutize(linkEl.attr("href"), pageUrl);
-      const title = cleanMovieTitle(
-        linkEl.attr("title") || linkEl.text()
-      );
+      const title = cleanMovieTitle(linkEl.attr("title") || linkEl.text());
 
       if (!link || !title) return null;
 
@@ -217,7 +269,7 @@ async function getCatalogItems(prefix, siteConfig, url) {
         id: `${prefix}:${encodeURIComponent(link)}`,
         name: category ? `[${category}] ${title}` : title,
         poster,
-		genres: category ? [category] : []
+        genres: category ? [category] : []
       };
     });
 
@@ -264,21 +316,23 @@ async function getEpisodes(prefix, url) {
    STREAM
 ========================= */
 async function getStream(prefix, url, epNum = 1) {
-
   try {
     const detail = await getDetail(url);
 
     const { data } = await axiosClient.get(url, {
-      headers: HEADERS
+      headers: {
+        ...HEADERS,
+        Referer: BASE_URL + "/"
+      }
     });
 
     const serverLinks = extractServerLinks(data, url);
-
     const finalSources = [...(detail?.sources || [])];
 
     for (const serverUrl of serverLinks) {
-	  
-      if (/\.(m3u8|mp4)(\?|$)/i.test(serverUrl)) {
+      if (!serverUrl) continue;
+
+      if (isDirectVideoUrl(serverUrl)) {
         finalSources.push(serverUrl);
         continue;
       }
@@ -289,13 +343,53 @@ async function getStream(prefix, url, epNum = 1) {
         continue;
       }
 
-      if (/playhydrax\.com/i.test(serverUrl)) {
+      if (/playhydrax\.com|hydrax/i.test(serverUrl)) {
         finalSources.push(serverUrl);
         continue;
       }
+
+      if (/ok\.ru\/videoembed\//i.test(serverUrl)) {
+        finalSources.push(serverUrl);
+        continue;
+      }
+
+      // fallback: inspect unknown player pages
+      try {
+        const { data: playerHtml } = await axiosClient.get(serverUrl, {
+          headers: {
+            ...HEADERS,
+            Referer: url
+          }
+        });
+
+        const embeddedDirect = extractSources(playerHtml);
+        if (embeddedDirect.length) {
+          finalSources.push(...embeddedDirect);
+        }
+
+        const nestedLinks = extractServerLinks(playerHtml, serverUrl);
+        for (const nested of nestedLinks) {
+          if (!nested) continue;
+
+          if (isDirectVideoUrl(nested)) {
+            finalSources.push(nested);
+            continue;
+          }
+
+          if (/play\.cat3movie\.club\/embed\//i.test(nested)) {
+            const embedSources = await resolveCat3Embed(nested);
+            finalSources.push(...embedSources);
+            continue;
+          }
+
+          if (/playhydrax\.com|hydrax|ok\.ru\/videoembed\//i.test(nested)) {
+            finalSources.push(nested);
+          }
+        }
+      } catch {}
     }
 
-    const uniqueSources = uniq(finalSources);
+    const uniqueSources = uniq(finalSources).filter(isLikelyPlayableHost);
 
     if (!uniqueSources.length) return null;
 
@@ -305,10 +399,11 @@ async function getStream(prefix, url, epNum = 1) {
         epNum,
         detail?.title || "Cat3Movie",
         uniqueSources.length > 1 ? `Server ${index + 1}` : "Cat3Movie",
-        "cat3"
+        "cat3",
+        url
       )
     );
-  } catch (e) {
+  } catch {
     return null;
   }
 }
@@ -318,5 +413,4 @@ module.exports = {
   getEpisodes,
   getStream,
   getNextPageUrl
-
 };
