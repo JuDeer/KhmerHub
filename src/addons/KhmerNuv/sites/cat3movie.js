@@ -332,8 +332,25 @@ async function getStream(prefix, url, epNum = 1) {
     console.log("[CAT3] detail", {
       hasDetail: !!detail,
       sources: detail?.sources?.length || 0,
-      title: detail?.title
+      title: detail?.title,
+      sample: detail?.sources?.slice(0, 5) || []
     });
+
+    // Fast path: direct JWPlayer sources already found on page
+    if (detail?.sources?.length) {
+      console.log("[CAT3] using direct detail.sources");
+
+      return uniq(detail.sources).map((src, index) =>
+        buildStream(
+          src,
+          epNum,
+          detail?.title || "Cat3Movie",
+          detail.sources.length > 1 ? `Server ${index + 1}` : "Cat3Movie",
+          "cat3",
+          url
+        )
+      );
+    }
 
     const { data } = await axiosClient.get(url, {
       headers: {
@@ -349,7 +366,7 @@ async function getStream(prefix, url, epNum = 1) {
       sample: serverLinks.slice(0, 5)
     });
 
-    const finalSources = [...(detail?.sources || [])];
+    const finalSources = [];
 
     for (const serverUrl of serverLinks) {
       console.log("[CAT3] processing", serverUrl);
@@ -357,7 +374,6 @@ async function getStream(prefix, url, epNum = 1) {
       if (!serverUrl) continue;
 
       if (isDirectVideoUrl(serverUrl)) {
-        console.log("[CAT3] direct video", serverUrl);
         finalSources.push(serverUrl);
         continue;
       }
@@ -373,87 +389,20 @@ async function getStream(prefix, url, epNum = 1) {
         continue;
       }
 
-      if (/playhydrax\.com|hydrax/i.test(serverUrl)) {
-        console.log("[CAT3] hydrax link", serverUrl);
+      if (/playhydrax\.com|hydrax|ok\.ru\/videoembed\//i.test(serverUrl)) {
         finalSources.push(serverUrl);
         continue;
-      }
-
-      if (/ok\.ru\/videoembed\//i.test(serverUrl)) {
-        console.log("[CAT3] ok.ru link", serverUrl);
-        finalSources.push(serverUrl);
-        continue;
-      }
-
-      try {
-        console.log("[CAT3] fallback fetch", serverUrl);
-
-        const { data: playerHtml } = await axiosClient.get(serverUrl, {
-          headers: {
-            ...HEADERS,
-            Referer: url
-          }
-        });
-
-        const embeddedDirect = extractSources(playerHtml);
-        console.log("[CAT3] fallback direct", {
-          serverUrl,
-          count: embeddedDirect.length,
-          sample: embeddedDirect.slice(0, 5)
-        });
-
-        if (embeddedDirect.length) {
-          finalSources.push(...embeddedDirect);
-        }
-
-        const nestedLinks = extractServerLinks(playerHtml, serverUrl);
-        console.log("[CAT3] nestedLinks", {
-          serverUrl,
-          count: nestedLinks.length,
-          sample: nestedLinks.slice(0, 5)
-        });
-
-        for (const nested of nestedLinks) {
-          if (!nested) continue;
-
-          if (isDirectVideoUrl(nested)) {
-            console.log("[CAT3] nested direct", nested);
-            finalSources.push(nested);
-            continue;
-          }
-
-          if (/play\.cat3movie\.club\/embed\//i.test(nested)) {
-            const embedSources = await resolveCat3Embed(nested);
-            console.log("[CAT3] nested embedSources", {
-              nested,
-              count: embedSources.length,
-              sample: embedSources.slice(0, 5)
-            });
-            finalSources.push(...embedSources);
-            continue;
-          }
-
-          if (/playhydrax\.com|hydrax|ok\.ru\/videoembed\//i.test(nested)) {
-            console.log("[CAT3] nested host link", nested);
-            finalSources.push(nested);
-          }
-        }
-      } catch (e) {
-        console.log("[CAT3] fallback ERROR", {
-          serverUrl,
-          error: e?.message || String(e)
-        });
       }
     }
 
-    console.log("[CAT3] finalSources BEFORE uniq/filter", {
+    console.log("[CAT3] finalSources BEFORE uniq", {
       count: finalSources.length,
       sample: finalSources.slice(0, 10)
     });
 
-    const uniqueSources = uniq(finalSources).filter(isLikelyPlayableHost);
+    const uniqueSources = uniq(finalSources);
 
-    console.log("[CAT3] finalSources AFTER uniq/filter", {
+    console.log("[CAT3] finalSources AFTER uniq", {
       count: uniqueSources.length,
       sample: uniqueSources.slice(0, 10)
     });
@@ -463,7 +412,7 @@ async function getStream(prefix, url, epNum = 1) {
       return null;
     }
 
-    console.log("[CAT3] returning streams", uniqueSources.length);
+    console.log("[CAT3] returning fallback streams", uniqueSources.length);
 
     return uniqueSources.map((src, index) =>
       buildStream(
