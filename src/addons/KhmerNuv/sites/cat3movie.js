@@ -415,16 +415,14 @@ async function getStream(prefix, url, epNum = 1) {
 
     console.log("[CAT3] returning fallback streams", uniqueSources.length);
 
-    return uniqueSources.map((src, index) =>
-      buildStream(
-        src,
-        epNum,
-        detail?.title || "Cat3Movie",
-        uniqueSources.length > 1 ? `Server ${index + 1}` : "Cat3Movie",
-        "cat3",
-        url
-      )
-    );
+    return [buildStream(
+      uniqueSources[0],
+      epNum,
+      detail?.title || "Cat3Movie",
+      "Cat3Movie",
+      "cat3",
+      url
+    )];
   } catch (e) {
     console.log("[CAT3] getStream ERROR", e?.message || String(e));
     return null;
