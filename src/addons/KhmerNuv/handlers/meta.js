@@ -1,6 +1,9 @@
 module.exports = (builder, deps) => {
   const { getSiteEngine, SITE_TYPES } = deps;
 
+  /* =========================
+     META
+  ========================= */
   builder.defineMetaHandler(async ({ id }) => {
     try {
       console.log("[META] handler called", { id });
@@ -19,6 +22,7 @@ module.exports = (builder, deps) => {
       const seriesUrl = decodeURIComponent(encodedUrl);
 
       const episodes = await siteEngine.getEpisodes(prefix, seriesUrl);
+
       console.log("[META] episodes", {
         count: episodes?.length || 0,
         firstId: episodes?.[0]?.id
@@ -28,10 +32,20 @@ module.exports = (builder, deps) => {
 
       const first = episodes[0];
 
+      /* =========================
+         MOVIE / CHANNEL FIX
+      ========================= */
       if (siteType === "movie" || siteType === "channel") {
+        const canonicalId = first.id;
+
+        console.log("[META] returning movie meta", {
+          incomingId: id,
+          metaId: canonicalId
+        });
+
         return {
           meta: {
-            id,
+            id: canonicalId,
             type: siteType,
             name: first.title,
             poster: first.thumbnail,
@@ -42,7 +56,7 @@ module.exports = (builder, deps) => {
             available: true,
             videos: [
               {
-                id,
+                id: canonicalId,
                 title: first.title,
                 thumbnail: first.thumbnail
               }
@@ -51,6 +65,9 @@ module.exports = (builder, deps) => {
         };
       }
 
+      /* =========================
+         SERIES
+      ========================= */
       return {
         meta: {
           id,
@@ -62,6 +79,7 @@ module.exports = (builder, deps) => {
           videos: episodes,
         },
       };
+
     } catch (err) {
       console.log("[META] error", err?.message || String(err));
       return { meta: null };
