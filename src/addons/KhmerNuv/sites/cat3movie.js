@@ -4,6 +4,9 @@ const axiosClient = require("../utils/fetch");
 const { normalizePoster, uniqById } = require("../utils/helpers");
 const { buildStream } = require("../utils/streamResolvers");
 
+const DEBUG = false;
+const log = (...args) => DEBUG && log(...args);
+
 /* =========================
    CONFIG
 ========================= */
@@ -298,7 +301,7 @@ function getNextPageUrl(base, html) {
 async function getEpisodes(prefix, url) {
   const detail = await getDetail(url);
 
-  console.log("[CAT3] getEpisodes", {
+  log("[CAT3] getEpisodes", {
     prefix,
     url,
     hasDetail: !!detail,
@@ -317,7 +320,7 @@ async function getEpisodes(prefix, url) {
     genres: detail.category ? [detail.category] : []
   };
 
-  console.log("[CAT3] getEpisodes return", episode);
+  log("[CAT3] getEpisodes return", episode);
 
   return [episode];
 }
@@ -327,10 +330,10 @@ async function getEpisodes(prefix, url) {
 ========================= */
 async function getStream(prefix, url, epNum = 1) {
   try {
-    console.log("[CAT3] getStream start", { url, epNum });
+    log("[CAT3] getStream start", { url, epNum });
 
     const detail = await getDetail(url);
-    console.log("[CAT3] detail", {
+    log("[CAT3] detail", {
       hasDetail: !!detail,
       sources: detail?.sources?.length || 0,
       title: detail?.title,
@@ -339,7 +342,7 @@ async function getStream(prefix, url, epNum = 1) {
 
     // Fast path: direct JWPlayer sources already found on page
     if (detail?.sources?.length) {
-      console.log("[CAT3] using direct detail.sources");
+      log("[CAT3] using direct detail.sources");
 
       return uniq(detail.sources).map((src, index) =>
         buildStream(
@@ -359,10 +362,10 @@ async function getStream(prefix, url, epNum = 1) {
         Referer: BASE_URL + "/"
       }
     });
-    console.log("[CAT3] page fetched");
+    log("[CAT3] page fetched");
 
     const serverLinks = extractServerLinks(data, url);
-    console.log("[CAT3] serverLinks", {
+    log("[CAT3] serverLinks", {
       count: serverLinks.length,
       sample: serverLinks.slice(0, 5)
     });
@@ -370,7 +373,7 @@ async function getStream(prefix, url, epNum = 1) {
     const finalSources = [];
 
     for (const serverUrl of serverLinks) {
-      console.log("[CAT3] processing", serverUrl);
+      log("[CAT3] processing", serverUrl);
 
       if (!serverUrl) continue;
 
@@ -381,7 +384,7 @@ async function getStream(prefix, url, epNum = 1) {
 
       if (/play\.cat3movie\.club\/embed\//i.test(serverUrl)) {
         const embedSources = await resolveCat3Embed(serverUrl);
-        console.log("[CAT3] embedSources", {
+        log("[CAT3] embedSources", {
           serverUrl,
           count: embedSources.length,
           sample: embedSources.slice(0, 5)
@@ -396,24 +399,24 @@ async function getStream(prefix, url, epNum = 1) {
       }
     }
 
-    console.log("[CAT3] finalSources BEFORE uniq", {
+    log("[CAT3] finalSources BEFORE uniq", {
       count: finalSources.length,
       sample: finalSources.slice(0, 10)
     });
 
     const uniqueSources = uniq(finalSources);
 
-    console.log("[CAT3] finalSources AFTER uniq", {
+    log("[CAT3] finalSources AFTER uniq", {
       count: uniqueSources.length,
       sample: uniqueSources.slice(0, 10)
     });
 
     if (!uniqueSources.length) {
-      console.log("[CAT3] NO STREAM FOUND");
+      log("[CAT3] NO STREAM FOUND");
       return null;
     }
 
-    console.log("[CAT3] returning fallback streams", uniqueSources.length);
+    log("[CAT3] returning fallback streams", uniqueSources.length);
 
     return [buildStream(
       uniqueSources[0],
@@ -424,7 +427,7 @@ async function getStream(prefix, url, epNum = 1) {
       url
     )];
   } catch (e) {
-    console.log("[CAT3] getStream ERROR", e?.message || String(e));
+    log("[CAT3] getStream ERROR", e?.message || String(e));
     return null;
   }
 }

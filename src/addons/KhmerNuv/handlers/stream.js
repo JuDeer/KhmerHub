@@ -1,18 +1,20 @@
 module.exports = (builder, deps) => {
   const { getSiteEngine, SITE_TYPES } = deps;
+  const DEBUG = false;
+  const log = (...args) => DEBUG && console.log(...args);
 
   /* =========================
      STREAM
   ========================= */
   builder.defineStreamHandler(async ({ id }) => {
     try {
-      console.log("[STREAM] handler called", { id });
+      log("[STREAM] handler called", { id });
 
       const parts = id.split(":");
       const prefix = parts[0];
 
       if (!prefix || parts.length < 2) {
-        console.log("[STREAM] invalid id format");
+        log("[STREAM] invalid id format");
         return { streams: [] };
       }
 
@@ -30,7 +32,7 @@ module.exports = (builder, deps) => {
         epNum = Number(parts[parts.length - 1]);
       }
 
-      console.log("[STREAM] parsed", {
+      log("[STREAM] parsed", {
         prefix,
         siteType,
         isSingleItem,
@@ -39,29 +41,29 @@ module.exports = (builder, deps) => {
       });
 
       if (!encodedUrl) {
-        console.log("[STREAM] missing encodedUrl");
+        log("[STREAM] missing encodedUrl");
         return { streams: [] };
       }
 
       if (!isSingleItem && (!Number.isInteger(epNum) || epNum <= 0)) {
-        console.log("[STREAM] invalid episode number");
+        log("[STREAM] invalid episode number");
         return { streams: [] };
       }
 
       const ctx = getSiteEngine(prefix);
       if (!ctx) {
-        console.log("[STREAM] no site engine for prefix", prefix);
+        log("[STREAM] no site engine for prefix", prefix);
         return { streams: [] };
       }
 
       const { engine: siteEngine } = ctx;
       const seriesUrl = decodeURIComponent(encodedUrl);
 
-      console.log("[STREAM] decoded url", { seriesUrl });
+      log("[STREAM] decoded url", { seriesUrl });
 
       const stream = await siteEngine.getStream(prefix, seriesUrl, epNum);
 
-      console.log("[STREAM] getStream result", {
+      log("[STREAM] getStream result", {
         hasStream: !!stream,
         isArray: Array.isArray(stream),
         count: Array.isArray(stream) ? stream.length : stream ? 1 : 0

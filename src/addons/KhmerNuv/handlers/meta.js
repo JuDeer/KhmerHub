@@ -1,12 +1,14 @@
 module.exports = (builder, deps) => {
   const { getSiteEngine, SITE_TYPES } = deps;
+  const DEBUG = false;
+  const log = (...args) => DEBUG && log(...args);  
 
   /* =========================
      META
   ========================= */
   builder.defineMetaHandler(async ({ id }) => {
     try {
-      console.log("[META] handler called", { id });
+      log("[META] handler called", { id });
 
       const parts = id.split(":");
       const prefix = parts[0];
@@ -23,7 +25,7 @@ module.exports = (builder, deps) => {
 
       const episodes = await siteEngine.getEpisodes(prefix, seriesUrl);
 
-      console.log("[META] episodes", {
+      log("[META] episodes", {
         count: episodes?.length || 0,
         firstId: episodes?.[0]?.id
       });
@@ -38,7 +40,7 @@ module.exports = (builder, deps) => {
       if (siteType === "movie" || siteType === "channel") {
         const canonicalId = first.id;
 
-        console.log("[META] returning movie meta", {
+        log("[META] returning movie meta", {
           incomingId: id,
           metaId: canonicalId
         });
@@ -81,7 +83,7 @@ module.exports = (builder, deps) => {
       };
 
     } catch (err) {
-      console.log("[META] error", err?.message || String(err));
+      log("[META] error", err?.message || String(err));
       return { meta: null };
     }
   });
