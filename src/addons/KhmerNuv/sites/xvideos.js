@@ -217,16 +217,12 @@ async function getEpisodes(prefix, seriesUrl) {
 
   return [
     {
-      id: 1,
-      url: seriesUrl,
+      id: `${prefix}:${encodeURIComponent(seriesUrl)}`, 
       title: detail.title,
       season: 1,
       episode: 1,
       thumbnail: detail.poster,
-      released: new Date().toISOString(),
-      behaviorHints: {
-        group: `${prefix}:${encodeURIComponent(seriesUrl)}`
-      }
+      description: detail.title
     }
   ];
 }
