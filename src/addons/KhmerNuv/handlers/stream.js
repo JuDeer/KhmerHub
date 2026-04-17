@@ -26,11 +26,9 @@ module.exports = (builder, deps) => {
         encodedUrl = parts.slice(1).join(":");
         epNum = 1;
       } else {
-        encodedUrl = parts[1]; 
-        epNum = Number(parts[parts.length - 1]); // last = episode
+        encodedUrl = parts[1];
+        epNum = Number(parts[parts.length - 1]);
       }
-
-      const epNum = isSingleItem ? 1 : Number(parts[parts.length - 1]);
 
       console.log("[STREAM] parsed", {
         prefix,
