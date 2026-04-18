@@ -74,7 +74,7 @@ module.exports = {
           extra: [
             { name: "search", isRequired: false },
             { name: "skip", isRequired: false },
-            { name: "genre", isRequired: false, options: ["Khmer", "Thai", "Indian", "Philippines", "Boran", "Horror", "Kon"] }
+            { name: "genre", isRequired: false, options: ["Khmer", "Thai", "Indian", "Philippines", "Thai-Boran", "Horror", "Kon"] }
           ]
         };
       }
