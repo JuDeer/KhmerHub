@@ -131,6 +131,7 @@ module.exports = {
       Milf: "/c/Milf-19",
       Oiled: "/c/Oiled-22",
 	  Party: "/tags/girls-party",
+	  Real: "/real-slut-party#_tabVideos",		
       Redhead: "/c/Redhead-31",
       Solo: "/c/Solo_and_Masturbation-33",
       Squirting: "/c/Squirting-56",
