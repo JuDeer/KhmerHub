@@ -122,11 +122,19 @@ async function resolveOkEmbed(embedUrl) {
       ];
 
       if (altMatches.length) {
-        return altMatches[altMatches.length - 1][1]
+        const okruUrl = altMatches[altMatches.length - 1][1]
           .replace(/\\u0026/g, "&")
           .replace(/\\&/g, "&")
           .replace(/\\\//g, "/")
           .replace(/&amp;/g, "&");
+
+        console.log("OKRU_MASTER_M3U8 =", okruUrl);
+        console.log("OKRU_HEADERS =", {
+          Referer: "https://ok.ru/",
+          "User-Agent": "Mozilla/5.0"
+        });
+
+        return okruUrl;
       }
 
       return null;
@@ -183,6 +191,11 @@ async function resolveOkEmbed(embedUrl) {
       .replace(/&amp;/g, "&");
 
     console.log("[resolveOkEmbed] final", cleanUrl);
+    console.log("OKRU_MASTER_M3U8 =", cleanUrl);
+    console.log("OKRU_HEADERS =", {
+      Referer: "https://ok.ru/",
+      "User-Agent": "Mozilla/5.0"
+    });
 
     return cleanUrl;
   } catch {
