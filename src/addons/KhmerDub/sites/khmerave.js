@@ -383,7 +383,14 @@ async function getStream(prefix, seriesUrl, episode) {
     if (cand.includes("ok.ru")) {
 	  
       const direct = await resolveOkRuToDirect(cand, UA_MOB);
-	  
+
+      console.log("OKRU_CAND =", cand);
+      console.log("OKRU_DIRECT =", direct);
+      console.log("OKRU_HEADERS =", {
+        Referer: "https://ok.ru/",
+        "User-Agent": UA_MOB
+      });
+
       if (!direct) return null;
 
       return {
