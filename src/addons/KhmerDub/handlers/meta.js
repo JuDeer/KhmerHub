@@ -29,7 +29,7 @@ module.exports = (builder, deps) => {
           meta: {
             id,
             type: siteType,
-            name: first.title,
+            name: first.seriesTitle || first.title,
             poster: first.thumbnail,
             background: first.thumbnail,
             description: first.title
