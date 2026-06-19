@@ -145,7 +145,7 @@ module.exports = {
   },
 
   khmertv: {
-	pageSize: 8,  
+	pageSize: 11,  
     baseUrl: ""
   },  
   
