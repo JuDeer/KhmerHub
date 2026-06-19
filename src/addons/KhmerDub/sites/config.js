@@ -150,7 +150,7 @@ module.exports = {
   },  
   english: {
     pageSize: 300,
-    baseUrl: "https://iptv-org.github.io/iptv/languages/eng.m3u"
+    baseUrl: "https://iptv-org.github.io/iptv/index.category.m3u"
   }	
   
 }; 
