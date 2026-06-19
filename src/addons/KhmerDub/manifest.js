@@ -4,7 +4,6 @@ const config = require("./sites/config");
 
 const sites = [
   { id: "khmertv", name: "KhmerTV", type: "channel", enabled: true }, 
-  { id: "english", name: "Khmer TV", type: "channel", enabled: true },
   { id: "vip", name: "PhumiVip", type: "series", enabled: true },
   { id: "sunday", name: "SundayDrama", type: "series", enabled: true },
   { id: "phumi2", name: "PhumiClub", type: "series", enabled: true },
