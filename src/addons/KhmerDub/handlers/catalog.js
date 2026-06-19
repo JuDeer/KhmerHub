@@ -40,7 +40,7 @@ module.exports = (builder, deps) => {
       }
 
       // KhmetTv
-      if (id === "khmertv") {
+      if (id === "khmertv" || id === "english") {
         const skip = Number(extra?.skip || 0);
         if (skip > 0) return { metas: [] };
 
