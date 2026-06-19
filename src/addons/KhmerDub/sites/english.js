@@ -100,7 +100,7 @@ async function getStream(prefix, seriesUrl, epNum, site) {
     channel.link,
     1,
     channel.title,
-    "English TV",
+    "Khmer II",
     "english",
     null
   );
