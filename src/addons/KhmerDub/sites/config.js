@@ -148,9 +148,5 @@ module.exports = {
 	pageSize: 8,  
     baseUrl: ""
   },  
-  english: {
-    pageSize: 30,
-    baseUrl: "https://iptv-org.github.io/iptv/languages/khm.m3u"
-  }	
   
 }; 
