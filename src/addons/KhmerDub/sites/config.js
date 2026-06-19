@@ -149,8 +149,8 @@ module.exports = {
     baseUrl: ""
   },  
   english: {
-    pageSize: 300,
-    baseUrl: "https://iptv-org.github.io/iptv/index.category.m3u"
+    pageSize: 403,
+    baseUrl: "https://iptv-org.github.io/iptv/categories/sports.m3u"
   }	
   
 }; 
