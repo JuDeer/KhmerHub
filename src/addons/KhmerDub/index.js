@@ -10,6 +10,7 @@ const khmerave = require("./sites/khmerave");
 const phumi2 = require("./sites/phumi2");
 const cat3movie = require("./sites/cat3movie");
 const khmertv = require("./sites/khmertv");
+const english = require("./sites/english");
 const xvideos = require("./sites/xvideos");
 
 const sites = require("./sites/config");
@@ -21,12 +22,14 @@ const { normalizePoster, mapMetas, uniqById } = require("./utils/helpers");
 const SITE_TYPES = {
   cat3movie: "movie",
   khmertv: "channel",
+  english: "channel",
   xvideos: "movie",
   default: "series"
 };
 
 const ENGINES = {
   khmertv,
+  english,
   vip: engine,
   sunday: engine,
   idrama: engine,
