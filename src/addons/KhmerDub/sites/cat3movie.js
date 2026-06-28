@@ -19,6 +19,7 @@ const HEADERS = {
 ========================= */
 function absolutize(url, base = BASE_URL) {
   try {
+    if (!url) return "";
     return new URL(url, base).toString();
   } catch {
     return url;
@@ -66,7 +67,7 @@ async function resolveCat3Embed(embedUrl) {
       headers: {
         ...HEADERS,
         Referer: embedUrl,
-        Origin: "https://play.cat3movie.club",
+        Origin: new URL(embedUrl).origin,
         Accept: "application/json, text/plain, */*",
         "X-Requested-With": "XMLHttpRequest"
       }
@@ -217,7 +218,7 @@ async function getCatalogItems(prefix, siteConfig, url) {
         id: `${prefix}:${encodeURIComponent(link)}`,
         name: category ? `[${category}] ${title}` : title,
         poster,
-		genres: category ? [category] : []
+        genres: category ? [category] : []
       };
     });
 
@@ -264,15 +265,22 @@ async function getEpisodes(prefix, url) {
    STREAM
 ========================= */
 async function getStream(prefix, url, epNum = 1) {
-
   try {
-    const detail = await getDetail(url);
-
-    const { data } = await axiosClient.get(url, {
-      headers: HEADERS
+    const res = await axiosClient.get(url, {
+      headers: HEADERS,
+      maxRedirects: 5
     });
 
-    const serverLinks = extractServerLinks(data, url);
+    const data = res.data;
+
+    const finalPageUrl =
+      res.request?.res?.responseUrl ||
+      res.request?.responseURL ||
+      url;
+
+    const detail = await getDetail(finalPageUrl);
+
+    const serverLinks = extractServerLinks(data, finalPageUrl);
 
     const finalSources = [...(detail?.sources || [])];
 
@@ -283,7 +291,10 @@ async function getStream(prefix, url, epNum = 1) {
         continue;
       }
 
-      if (/play\.cat3movie\.club\/embed\//i.test(serverUrl)) {
+      if (
+        /play\.cat3movie\.club\/embed\//i.test(serverUrl) ||
+        /vivamax\.cam\/(embed|player|api)\//i.test(serverUrl)
+      ) {
         const embedSources = await resolveCat3Embed(serverUrl);
         finalSources.push(...embedSources);
         continue;
