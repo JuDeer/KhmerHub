@@ -267,6 +267,18 @@ async function resolveOkRuToDirect(iframeUrl, ua) {
         ...html.matchAll(/&quot;url&quot;:&quot;(https:[^"]+)&quot;,&quot;name&quot;:&quot;[^"]+&quot;/gi)
       ];
 
+      console.log("OKRU_MATCH_COUNT =", videoUrlMatches.length);
+      console.log(
+        "OKRU_URLS =",
+        videoUrlMatches.map(m =>
+          m[1]
+            .replace(/\\u0026/g, "&")
+            .replace(/\\&/g, "&")
+            .replace(/\\\//g, "/")
+            .replace(/&amp;/g, "&")
+        )
+      );
+
       if (videoUrlMatches.length) {
         const directUrl = videoUrlMatches[videoUrlMatches.length - 1][1]
           .replace(/\\u0026/g, "&")
@@ -386,7 +398,7 @@ async function getStream(prefix, seriesUrl, episode) {
       const direct = await resolveOkRuToDirect(cand, UA_MOB);
 
       console.log("OKRU_CAND =", cand);
-      console.log("OKRU_URLS =", urls);
+      console.log("OKRU_DIRECT =", direct);
       console.log("OKRU_HEADERS =", {
         Referer: "https://ok.ru/",
         "User-Agent": UA_MOB
