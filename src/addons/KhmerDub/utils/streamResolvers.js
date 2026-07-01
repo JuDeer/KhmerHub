@@ -168,17 +168,8 @@ async function resolveOkEmbed(embedUrl) {
           .replace(/\\\//g, "/")
           .replace(/&amp;/g, "&");
 
-        console.log("OKRU_MASTER_M3U8 =", okruUrl);
-        console.log("OKRU_HEADERS =", {
-          Referer: "https://ok.ru/",
-          "User-Agent": "Mozilla/5.0"
-        });
-
-        const picked = await pickHighestHlsVariant(okruUrl);
-        console.log("OKRU_PICKED_HIGHEST =", picked);
-        return picked;
+        return await pickHighestHlsVariant(okruUrl);
       }
-
       return null;
     }
 
@@ -220,8 +211,6 @@ async function resolveOkEmbed(embedUrl) {
             .replace(/\\&/g, "&")
             .replace(/\\\//g, "/")
             .replace(/&amp;/g, "&");
-
-          console.log("[resolveOkEmbed] metadata final", cleanUrl);
         }
       } catch {}
     }
@@ -232,16 +221,7 @@ async function resolveOkEmbed(embedUrl) {
       .replace(/\\\//g, "/")
       .replace(/&amp;/g, "&");
 
-    console.log("[resolveOkEmbed] final", cleanUrl);
-    console.log("OKRU_MASTER_M3U8 =", cleanUrl);
-    console.log("OKRU_HEADERS =", {
-      Referer: "https://ok.ru/",
-      "User-Agent": "Mozilla/5.0"
-    });
-
-    const picked = await pickHighestHlsVariant(cleanUrl);
-    console.log("OKRU_PICKED_HIGHEST =", picked);
-    return picked;
+    return await pickHighestHlsVariant(cleanUrl);
   } catch {
     return null;
   }
