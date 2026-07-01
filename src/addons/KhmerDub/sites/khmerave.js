@@ -412,32 +412,9 @@ async function getStream(prefix, seriesUrl, episode) {
 
     const cand = normalizeOkUrl(candidate);
 
-    if (cand.includes("ok.ru")) {
-	  
+    if (cand.includes("ok.ru")) {	  
       const direct = await resolveOkRuToDirect(cand, UA_MOB);
-
-      console.log("OKRU_CAND =", cand);
-      console.log("OKRU_DIRECT =", direct);
-      console.log("OKRU_HEADERS =", {
-        Referer: "https://ok.ru/",
-        "User-Agent": UA_MOB
-      });
-
       if (!direct) return null;
-
-      try {
-        const hlsRes = await axios.get(direct, {
-          headers: {
-            Referer: "https://ok.ru/",
-            "User-Agent": UA_MOB
-          },
-          timeout: 15000
-        });
-
-        console.log("OKRU_M3U8 =", String(hlsRes.data).slice(0, 3000));
-      } catch (e) {
-        console.log("OKRU_M3U8_ERROR =", e.response?.status || e.message);
-      }
 
       return {
         name: providerName,
