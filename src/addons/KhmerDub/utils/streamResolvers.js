@@ -73,6 +73,46 @@ async function resolvePlayerUrl(playerUrl) {
   }
 }
 
+async function pickHighestHlsVariant(masterUrl) {
+  try {
+    const { data } = await axiosClient.get(masterUrl, {
+      headers: {
+        "User-Agent": "Mozilla/5.0",
+        Referer: "https://ok.ru/"
+      }
+    });
+
+    const lines = String(data || "").split(/\r?\n/);
+    let best = null;
+
+    for (let i = 0; i < lines.length; i++) {
+      const info = lines[i];
+      if (!info.startsWith("#EXT-X-STREAM-INF")) continue;
+
+      const next = lines[i + 1];
+      if (!next || next.startsWith("#")) continue;
+
+      const res = info.match(/RESOLUTION=(\d+)x(\d+)/i);
+      const height = res ? parseInt(res[2], 10) : 0;
+
+      let variantUrl;
+      try {
+        variantUrl = new URL(next.trim(), masterUrl).toString();
+      } catch {
+        continue;
+      }
+
+      if (!best || height > best.height) {
+        best = { height, url: variantUrl };
+      }
+    }
+
+    return best?.url || masterUrl;
+  } catch {
+    return masterUrl;
+  }
+}
+
 /* =========================
    RESOLVE OK
 ========================= */
@@ -134,7 +174,9 @@ async function resolveOkEmbed(embedUrl) {
           "User-Agent": "Mozilla/5.0"
         });
 
-        return okruUrl;
+        const picked = await pickHighestHlsVariant(okruUrl);
+        console.log("OKRU_PICKED_HIGHEST =", picked);
+        return picked;
       }
 
       return null;
@@ -197,7 +239,9 @@ async function resolveOkEmbed(embedUrl) {
       "User-Agent": "Mozilla/5.0"
     });
 
-    return cleanUrl;
+    const picked = await pickHighestHlsVariant(cleanUrl);
+    console.log("OKRU_PICKED_HIGHEST =", picked);
+    return picked;
   } catch {
     return null;
   }
