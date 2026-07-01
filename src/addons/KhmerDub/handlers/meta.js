@@ -19,12 +19,7 @@ module.exports = (builder, deps) => {
       const siteType = SITE_TYPES[prefix] || SITE_TYPES.default;
       const seriesUrl = decodeURIComponent(encodedUrl);
 
-      const episodes = await siteEngine.getEpisodes(prefix, seriesUrl);
-      
-      console.log("[META] id =", id);
-      console.log("[META] prefix =", prefix);
-      console.log("[META] episodes =", episodes.length);
-      
+      const episodes = await siteEngine.getEpisodes(prefix, seriesUrl);      
       if (!episodes.length) return { meta: null };
 
       const first = episodes[0];
@@ -42,8 +37,6 @@ module.exports = (builder, deps) => {
           },
         };
       }
-
-      console.log("[META] videos =", episodes.length);
       
       return {
         meta: {
