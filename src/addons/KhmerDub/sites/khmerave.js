@@ -1,6 +1,7 @@
 const axios = require("axios");
 const cheerio = require("cheerio");
 
+
 const UA_WIN =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120 Safari/537.36";
 const UA_MOB =
@@ -110,6 +111,12 @@ async function getEpisodes(prefix, seriesUrl) {
     });
 
     const $ = cheerio.load(data);
+    console.log("Episode rows:", $("#latest-videos tbody tr").length);
+
+    $("#latest-videos tbody tr").each((i, row) => {
+      const a = $(row).find("a").first();
+      console.log(i + 1, a.text().trim(), a.attr("href"));
+    });
 
     const pageTitle = $("h1").first().text().trim() || seriesUrl;
 
@@ -379,6 +386,12 @@ async function getStream(prefix, seriesUrl, episode) {
     });
 
     const $ = cheerio.load(data);
+    console.log("Stream rows:", $("#latest-videos tbody tr").length);
+
+    $("#latest-videos tbody tr").each((i, row) => {
+      const a = $(row).find("a").first();
+      console.log(i + 1, a.text().trim(), a.attr("href"));
+    });
 
     let eps = [];
     $("table#latest-videos a[href], div.col-xs-6.col-sm-6.col-md-3 a[href]").each(
