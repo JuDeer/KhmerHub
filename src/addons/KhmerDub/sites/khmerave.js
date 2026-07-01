@@ -406,6 +406,20 @@ async function getStream(prefix, seriesUrl, episode) {
 
       if (!direct) return null;
 
+      try {
+        const hlsRes = await axios.get(direct, {
+          headers: {
+            Referer: "https://ok.ru/",
+            "User-Agent": UA_MOB
+          },
+          timeout: 15000
+        });
+
+        console.log("OKRU_M3U8 =", String(hlsRes.data).slice(0, 3000));
+      } catch (e) {
+        console.log("OKRU_M3U8_ERROR =", e.response?.status || e.message);
+      }
+
       return {
         name: providerName,
         title: `Episode ${String(episode).padStart(2, "0")}`,
