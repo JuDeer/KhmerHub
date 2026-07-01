@@ -16,7 +16,7 @@ const sites = [
 
 module.exports = {
   id: "community.khmer.stremio",
-  version: "4.5.0",
+  version: "4.5.1",
   name: "KhmerDub",
   description: "Stream contents | Dev: TheDevilz.",
   logo: "https://raw.githubusercontent.com/konrepo/KhmerKodi/refs/heads/main/logo/person.png",
