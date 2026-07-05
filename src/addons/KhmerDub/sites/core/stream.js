@@ -66,8 +66,8 @@ async function getStream(prefix, seriesUrl, episode) {
     khmerave: "KhmerAve",
     merlkon: "Merlkon",
     phumi2: "PhumiClub",
-	cat3movie: "Cat3Movie",
-	xvideos: "xVideos"
+    cat3movie: "Cat3Movie",
+    xvideos: "xVideos"
   };
 
   const providerName = providerNames[prefix] || "KhmerDub";
@@ -86,7 +86,14 @@ async function getStream(prefix, seriesUrl, episode) {
     const url = links[episode - 1];
     if (!url) return null;
 
-    return buildStream(url, episode, undefined, providerName, groupName, seriesUrl);
+    return buildStream(
+      url,
+      episode,
+      undefined,
+      providerName,
+      groupName,
+      seriesUrl || "https://phumikhmer.vip/"
+    );
   }
 
   if (!postId) return null;
@@ -124,12 +131,6 @@ async function getStream(prefix, seriesUrl, episode) {
     if (!resolved) return null;
     url = resolved;
   }
-  
-  console.log("[VIP final stream url]", {
-    episode,
-    url
-  });
-  
 
   if (url.includes("ok.ru/videoembed/")) {
     const resolved = await resolveOkEmbed(url);
@@ -137,7 +138,19 @@ async function getStream(prefix, seriesUrl, episode) {
     url = resolved;
   }
 
-  return buildStream(url, episode, undefined, providerName, groupName, seriesUrl);
+  console.log("[VIP final stream url]", {
+    episode,
+    url
+  });
+
+  return buildStream(
+    url,
+    episode,
+    undefined,
+    providerName,
+    groupName,
+    seriesUrl || "https://phumikhmer.vip/"
+  );  
 }
 
 module.exports = {
