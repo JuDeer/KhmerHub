@@ -61,7 +61,7 @@ async function getEpisodes(prefix, seriesUrl) {
 
   const maxEp = POST_INFO.get(postId)?.maxEp || null;
 
-  let urls = [...new Set(detail.urls)];
+  let urls = detail.urls.filter(Boolean);
 
   if (maxEp && urls.length > maxEp) {
     urls = urls.slice(0, maxEp);
