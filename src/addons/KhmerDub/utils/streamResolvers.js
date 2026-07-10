@@ -320,6 +320,7 @@ function buildStream(
 module.exports = {
   resolvePlayerUrl,
   resolveOkEmbed,
+  resolveVideo4Khmer,
   buildStream,
   extractYouTubeId,
   buildYouTubeStreams
