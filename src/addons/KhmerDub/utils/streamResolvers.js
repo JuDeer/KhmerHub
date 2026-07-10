@@ -228,6 +228,51 @@ async function resolveOkEmbed(embedUrl) {
 }
 
 /* =========================
+   RESOLVE VIDEO4KHMER
+========================= */
+async function resolveVideo4Khmer(seriesUrl, episode) {
+  try {
+    const { data } = await axiosClient.get(seriesUrl, {
+      headers: {
+        "User-Agent": "Mozilla/5.0",
+        Referer: seriesUrl
+      }
+    });
+
+    const html = String(data || "")
+      .replace(/\\\//g, "/")
+      .replace(/&amp;/g, "&");
+
+    const jsMatch = html.match(/src="(\/assets\/index-[^"]+\.js)"/i);
+    if (!jsMatch?.[1]) {
+      console.log("[Video4Khmer] app JS not found");
+      return null;
+    }
+
+    const jsUrl = new URL(jsMatch[1], seriesUrl).toString();
+
+    const { data: js } = await axiosClient.get(jsUrl, {
+      headers: {
+        "User-Agent": "Mozilla/5.0",
+        Referer: seriesUrl
+      }
+    });
+
+    const text = String(js || "")
+      .replace(/\\\//g, "/")
+      .replace(/&amp;/g, "&");
+
+    console.log("[Video4Khmer JS]", jsUrl);
+    console.log(text.slice(0, 4000));
+
+    return null;
+  } catch (err) {
+    console.log("[Video4Khmer]", err.message);
+    return null;
+  }
+}
+
+/* =========================
    BUILD STREAM
 ========================= */
 function buildStream(
