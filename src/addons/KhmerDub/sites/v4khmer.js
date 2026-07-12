@@ -54,6 +54,8 @@ function extractPlayerList(html = "") {
 async function getCatalogItems(prefix, siteConfig, url) {
   try {
     const finalUrl = url || siteConfig.baseUrl || BASE;
+	
+	console.log("[v4khmer] Catalog URL:", finalUrl);
 
     const { data } = await axios.get(finalUrl, {
       headers: { "User-Agent": UA_WIN, Referer: BASE },
@@ -61,6 +63,7 @@ async function getCatalogItems(prefix, siteConfig, url) {
     });
 
     const $ = cheerio.load(data);
+	console.log("[v4khmer] Found items:", $("a.box1[href]").length);
     const items = [];
 
     $("a.box1[href]").each((_, el) => {
