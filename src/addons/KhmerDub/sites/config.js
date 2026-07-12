@@ -35,6 +35,12 @@ module.exports = {
 	}	
   },
   
+  v4khmer: {
+    ...defaultSite,
+    baseUrl: "https://video4khmer.cam/",
+    pageSize: 40
+  },	
+  
   phumi2: {
 	pageSize: 12, 
     baseUrl: "https://www.phumikhmer1.club/",

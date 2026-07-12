@@ -6,6 +6,7 @@ const sites = [
   { id: "khmertv", name: "KhmerTV", type: "channel", enabled: true }, 
   { id: "vip", name: "PhumiVip", type: "series", enabled: true },
   { id: "sunday", name: "SundayDrama", type: "series", enabled: true },
+  { id: "v4khmer", name: "Video4Khmer", type: "series", enabled: true },
   { id: "phumi2", name: "PhumiClub", type: "series", enabled: true },
   { id: "khmerave", name: "KhmerAve", type: "series", enabled: true },
   { id: "merlkon", name: "Merlkon", type: "series", enabled: true },
@@ -16,7 +17,7 @@ const sites = [
 
 module.exports = {
   id: "community.khmer.stremio",
-  version: "4.5.0",
+  version: "4.5.1",
   name: "KhmerDub",
   description: "Stream contents | Dev: TheDevilz.",
   logo: "https://raw.githubusercontent.com/konrepo/KhmerKodi/refs/heads/main/logo/person.png",
