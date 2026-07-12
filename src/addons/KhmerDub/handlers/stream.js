@@ -8,15 +8,20 @@ module.exports = (builder, deps) => {
     try {
       const parts = id.split(":");
       const prefix = parts[0];
-      const encodedUrl = parts[1];
+
+      const siteType = SITE_TYPES[prefix] || SITE_TYPES.default;
+      const isSingleItem = siteType === "movie" || siteType === "channel";
+
+      const encodedUrl = isSingleItem
+        ? parts.slice(1).join(":")
+        : parts.slice(1, -2).join(":");
+
+      const seasonNum = isSingleItem ? 1 : Number(parts[parts.length - 2]);
+      const epNum = isSingleItem ? 1 : Number(parts[parts.length - 1]);
 
       if (!prefix || !encodedUrl) {
         return { streams: [] };
       }
-
-      const siteType = SITE_TYPES[prefix] || SITE_TYPES.default;
-      const isSingleItem = siteType === "movie" || siteType === "channel";
-      const epNum = isSingleItem ? 1 : Number(parts[parts.length - 1]);
 
       if (!isSingleItem && (!Number.isInteger(epNum) || epNum <= 0)) {
         return { streams: [] };

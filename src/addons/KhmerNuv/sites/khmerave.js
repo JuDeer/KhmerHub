@@ -33,13 +33,19 @@ function extractEpisodeNumber(link, text = "") {
 
   if (link.includes("/album/")) return 1;
 
+  let m;
+
+  const textMatch = String(text).match(/Episode\s*0*(\d+)/i);
+  if (textMatch) {
+    const n = parseInt(textMatch[1], 10);
+    if (n > 0) return n;
+  }
+
   const slug = link
     .split("?")[0]
     .replace(/\/+$/, "")
     .split("/")
     .pop() || "";
-
-  let m;
 
   m = slug.match(/-(\d+)-end$/i);
   if (m) return parseInt(m[1], 10);
@@ -47,13 +53,10 @@ function extractEpisodeNumber(link, text = "") {
   m = slug.match(/-(\d+)e(?:-\d+)?$/i);
   if (m) return parseInt(m[1], 10);
 
-  m = slug.match(/-(\d+)-\d+$/i);
-  if (m) return parseInt(m[1], 10);
-
   m = slug.match(/-(\d+)$/i);
   if (m) return parseInt(m[1], 10);
 
-  m = String(text).match(/Episode\s*0*(\d+)/i);
+  m = slug.match(/-(\d+)-\d+$/i);
   if (m) return parseInt(m[1], 10);
 
   return 1;
@@ -140,7 +143,8 @@ async function getEpisodes(prefix, seriesUrl) {
 
     return eps.map((e) => ({
       id: `${prefix}:${encodeURIComponent(seriesUrl)}:1:${e.epNumber}`,
-      title: pageTitle,
+      title: `Episode ${String(e.epNumber).padStart(2, "0")}`,
+      seriesTitle: pageTitle,
       season: 1,
       episode: e.epNumber,
       thumbnail: poster,
@@ -426,4 +430,3 @@ module.exports = {
   getEpisodes,
   getStream,
 };
-

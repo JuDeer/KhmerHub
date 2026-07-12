@@ -136,7 +136,8 @@ module.exports = {
       Mature: "/c/Mature-38",
       Milf: "/c/Milf-19",
       Oiled: "/c/Oiled-22",
-	  Party: "/tags/girls-party",
+	  PartyGirls: "/tags/party-girls/",
+	  Party: "/tags/girls-party",	
       Redhead: "/c/Redhead-31",
       Solo: "/c/Solo_and_Masturbation-33",
       Squirting: "/c/Squirting-56",
@@ -144,12 +145,13 @@ module.exports = {
       Stockings: "/c/Stockings-28",
 	  Swingers: "/tags/swingers",
       Teen: "/c/Teen-13",
+	  TeenSwap: "/tags/swap-teen",
 	  Threesome: "/tags/threesome",
     }
   },
 
   khmertv: {
-	pageSize: 8,  
+	pageSize: 11,  
     baseUrl: ""
   },  
   

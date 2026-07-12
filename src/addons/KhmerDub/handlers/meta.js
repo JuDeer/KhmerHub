@@ -19,31 +19,33 @@ module.exports = (builder, deps) => {
       const siteType = SITE_TYPES[prefix] || SITE_TYPES.default;
       const seriesUrl = decodeURIComponent(encodedUrl);
 
-      const episodes = await siteEngine.getEpisodes(prefix, seriesUrl);
+      const episodes = await siteEngine.getEpisodes(prefix, seriesUrl);      
       if (!episodes.length) return { meta: null };
 
       const first = episodes[0];
-
+      const seriesName = first.seriesTitle || first.name || first.title;
+      
       if (siteType === "movie" || siteType === "channel") {
         return {
           meta: {
             id,
             type: siteType,
-            name: first.title,
+            name: seriesName,
             poster: first.thumbnail,
             background: first.thumbnail,
-            description: first.title
+            description: seriesName
           },
         };
       }
-
+      
       return {
         meta: {
           id,
           type: siteType,
-          name: first.title,
+          name: seriesName,
           poster: first.thumbnail,
           background: first.thumbnail,
+          description: seriesName,
           videos: episodes,
         },
       };
