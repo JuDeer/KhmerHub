@@ -45,7 +45,6 @@ function uniq(arr) {
 
 async function resolveCat3Embed(embedUrl) {
   try {
-
     const { data } = await axiosClient.get(embedUrl, {
       headers: {
         ...HEADERS,
@@ -53,15 +52,25 @@ async function resolveCat3Embed(embedUrl) {
       }
     });
 
+    let html = String(data || "")
+      .replace(/\\\//g, "/")
+      .replace(/&amp;/g, "&");
+
+    // Direct m3u8/mp4 from page
+    const direct = [
+      ...html.matchAll(/https?:\/\/[^"'<> ]+\.(?:m3u8|mp4)(?:\?[^"'<> ]*)?/gi)
+    ].map(m => m[0]);
+
+    if (direct.length) return uniq(direct);
+
+    // Existing API pattern
     const apiMatch =
-      data.match(/url\s*:\s*"([^"]*\/api\/\?[^"]+)"/i) ||
-      data.match(/url\s*:\s*'([^']*\/api\/\?[^']+)'/i);
+      html.match(/url\s*:\s*"([^"]*\/api\/\?[^"]+)"/i) ||
+      html.match(/url\s*:\s*'([^']*\/api\/\?[^']+)'/i);
 
-    if (!apiMatch || !apiMatch[1]) {
-      return [];
-    }
+    if (!apiMatch?.[1]) return [];
 
-    const apiUrl = apiMatch[1].replace(/\\\//g, "/");
+    const apiUrl = absolutize(apiMatch[1], embedUrl);
 
     const { data: apiRes } = await axiosClient.get(apiUrl, {
       headers: {
@@ -76,11 +85,12 @@ async function resolveCat3Embed(embedUrl) {
     const rawSources =
       apiRes?.sources ||
       apiRes?.data?.sources ||
+      apiRes?.result?.sources ||
       [];
 
     const sources = Array.isArray(rawSources)
       ? rawSources
-          .map((s) => {
+          .map(s => {
             if (typeof s === "string") return s;
             return s?.file || s?.src || s?.url || "";
           })
@@ -88,7 +98,7 @@ async function resolveCat3Embed(embedUrl) {
       : [];
 
     return uniq(sources);
-  } catch (e) {
+  } catch {
     return [];
   }
 }
