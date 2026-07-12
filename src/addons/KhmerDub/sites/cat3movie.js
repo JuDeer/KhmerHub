@@ -103,6 +103,51 @@ async function resolveCat3Embed(embedUrl) {
   }
 }
 
+async function resolveVivamaxMovie(movieUrl) {
+  try {
+    const slug = movieUrl
+      .replace(/\/$/, "")
+      .split("/")
+      .pop();
+
+    const apiUrl =
+      `https://vivamax.cam/api/movies.php?find_slug=${encodeURIComponent(slug)}&paginated=1`;
+
+    const { data } = await axiosClient.get(apiUrl, {
+      headers: HEADERS
+    });
+
+    const movie = data?.data?.[0];
+    if (!movie) return [];
+
+    let servers = movie.servers;
+
+    if (typeof servers === "string") {
+      servers = JSON.parse(servers);
+    }
+
+    const sources = [];
+
+    for (const server of servers || []) {
+      for (const ep of server.episodes || []) {
+        if (!ep.url) continue;
+
+        // url|language|subtitle
+        const [videoUrl] = ep.url.split("|");
+
+        if (videoUrl) {
+          sources.push(videoUrl);
+        }
+      }
+    }
+
+    return uniq(sources);
+
+  } catch {
+    return [];
+  }
+}
+
 /* =========================
    JWPLAYER PARSER
 ========================= */
@@ -301,9 +346,15 @@ async function getStream(prefix, url, epNum = 1) {
         continue;
       }
 
+      if (/vivamax\.cam\/movies\//i.test(serverUrl)) {
+        const sources = await resolveVivamaxMovie(serverUrl);
+        finalSources.push(...sources);
+        continue;
+      }
+
       if (
         /play\.cat3movie\.club\/embed\//i.test(serverUrl) ||
-        /vivamax\.cam\/(embed|player|api|movies)\//i.test(serverUrl)
+        /vivamax\.cam\/(embed|player|api)\//i.test(serverUrl)
       ) {
         const embedSources = await resolveCat3Embed(serverUrl);
         finalSources.push(...embedSources);
