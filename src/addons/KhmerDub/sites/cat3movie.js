@@ -51,6 +51,42 @@ function uniq(arr) {
   return [...new Set(arr.filter(Boolean))];
 }
 
+function normalizeStreamSource(src) {
+  if (!src) return null;
+
+  if (typeof src === "string") {
+    return {
+      url: src.trim()
+    };
+  }
+
+  if (src.url) {
+    return {
+      url: String(src.url).trim(),
+      subtitle: src.subtitle,
+      language: src.language
+    };
+  }
+
+  return null;
+}
+
+function uniqStreamSources(items) {
+  const seen = new Set();
+  const out = [];
+
+  for (const item of items) {
+    const src = normalizeStreamSource(item);
+    if (!src?.url) continue;
+    if (seen.has(src.url)) continue;
+
+    seen.add(src.url);
+    out.push(src);
+  }
+
+  return out;
+}
+
 async function resolveCat3Embed(embedUrl) {
   try {
     embedUrl = safeDecode(embedUrl);
@@ -156,17 +192,21 @@ async function resolveVivamaxMovie(movieUrl) {
       for (const ep of server.episodes || []) {
         if (!ep.url) continue;
 
-        const [videoUrl, language, subtitleUrl] = ep.url.split("|");
+        const [videoUrl, language, subtitleUrl] = String(ep.url).split("|");
 
         if (videoUrl) {
-          sources.push(videoUrl.trim());
+          sources.push({
+            url: videoUrl.trim(),
+            subtitle: subtitleUrl?.trim(),
+            language: language || "English"
+          });
         }
       }
     }
 
     console.log("[cat3] vivamax sources:", sources.length);
 
-    return uniq(sources);
+    return sources;
   } catch (e) {
     console.log("[cat3] vivamax error:", e.message);
     return [];
@@ -423,13 +463,12 @@ async function getStream(prefix, url, epNum = 1) {
       finalSources.push(...fallbackSources);
     }
 
-    const uniqueSources = uniq(finalSources);
+    const uniqueSources = uniqStreamSources(finalSources);
 
     console.log("[cat3] total sources:", uniqueSources.length);
 
     if (!uniqueSources.length) return null;
 
-    return uniqueSources.map((src, index) =>
     return uniqueSources.map((src, index) => ({
       ...buildStream(
         src.url,
