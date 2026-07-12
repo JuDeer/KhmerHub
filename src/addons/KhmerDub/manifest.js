@@ -17,7 +17,7 @@ const sites = [
 
 module.exports = {
   id: "community.khmer.stremio",
-  version: "4.5.1",
+  version: "4.5.2",
   name: "KhmerDub",
   description: "Stream contents | Dev: TheDevilz.",
   logo: "https://raw.githubusercontent.com/konrepo/KhmerKodi/refs/heads/main/logo/person.png",
@@ -79,6 +79,19 @@ module.exports = {
           ]
         };
       }
+	  
+      if (site.id === "v4khmer") {
+        return {
+          type: site.type,
+          id: site.id,
+          name: site.name,
+          extra: [
+            { name: "search", isRequired: false },
+            { name: "skip", isRequired: false },
+            { name: "genre", isRequired: false, options: ["Korean", "Chinese", "Khmer"] }
+          ]
+        };
+      }	  
 
       if (site.id === "xvideos") {
         return {
