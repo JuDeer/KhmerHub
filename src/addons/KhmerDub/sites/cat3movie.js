@@ -26,6 +26,14 @@ function absolutize(url, base = BASE_URL) {
   }
 }
 
+function safeDecode(value) {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+}
+
 function cleanTitle(text) {
   return (text || "").replace(/\s+/g, " ").trim();
 }
@@ -45,6 +53,8 @@ function uniq(arr) {
 
 async function resolveCat3Embed(embedUrl) {
   try {
+    embedUrl = safeDecode(embedUrl);
+
     const { data } = await axiosClient.get(embedUrl, {
       headers: {
         ...HEADERS,
@@ -56,14 +66,12 @@ async function resolveCat3Embed(embedUrl) {
       .replace(/\\\//g, "/")
       .replace(/&amp;/g, "&");
 
-    // Direct m3u8/mp4 from page
     const direct = [
       ...html.matchAll(/https?:\/\/[^"'<> ]+\.(?:m3u8|mp4)(?:\?[^"'<> ]*)?/gi)
     ].map(m => m[0]);
 
     if (direct.length) return uniq(direct);
 
-    // Existing API pattern
     const apiMatch =
       html.match(/url\s*:\s*"([^"]*\/api\/\?[^"]+)"/i) ||
       html.match(/url\s*:\s*'([^']*\/api\/\?[^']+)'/i);
@@ -98,27 +106,43 @@ async function resolveCat3Embed(embedUrl) {
       : [];
 
     return uniq(sources);
-  } catch {
+  } catch (e) {
+    console.log("[cat3] embed error:", e.message);
     return [];
   }
 }
 
 async function resolveVivamaxMovie(movieUrl) {
   try {
+    movieUrl = safeDecode(movieUrl);
+
     const slug = movieUrl
       .replace(/\/$/, "")
       .split("/")
       .pop();
 
+    if (!slug) return [];
+
     const apiUrl =
       `https://vivamax.cam/api/movies.php?find_slug=${encodeURIComponent(slug)}&paginated=1`;
 
+    console.log("[cat3] vivamax api:", apiUrl);
+
     const { data } = await axiosClient.get(apiUrl, {
-      headers: HEADERS
+      headers: {
+        ...HEADERS,
+        Referer: "https://vivamax.cam/",
+        Origin: "https://vivamax.cam",
+        Accept: "application/json, text/plain, */*"
+      }
     });
 
     const movie = data?.data?.[0];
-    if (!movie) return [];
+
+    if (!movie) {
+      console.log("[cat3] vivamax no movie:", slug);
+      return [];
+    }
 
     let servers = movie.servers;
 
@@ -132,18 +156,19 @@ async function resolveVivamaxMovie(movieUrl) {
       for (const ep of server.episodes || []) {
         if (!ep.url) continue;
 
-        // url|language|subtitle
-        const [videoUrl] = ep.url.split("|");
+        const [videoUrl] = String(ep.url).split("|");
 
         if (videoUrl) {
-          sources.push(videoUrl);
+          sources.push(videoUrl.trim());
         }
       }
     }
 
-    return uniq(sources);
+    console.log("[cat3] vivamax sources:", sources.length);
 
-  } catch {
+    return uniq(sources);
+  } catch (e) {
+    console.log("[cat3] vivamax error:", e.message);
     return [];
   }
 }
@@ -153,7 +178,7 @@ async function resolveVivamaxMovie(movieUrl) {
 ========================= */
 function extractSources(html) {
   const sources = [
-    ...html.matchAll(/file\s*:\s*["']([^"']+)["']/gi)
+    ...String(html || "").matchAll(/file\s*:\s*["']([^"']+)["']/gi)
   ]
     .map(m => String(m[1] || "").trim())
     .filter(url =>
@@ -186,6 +211,7 @@ function extractServerLinks(html, pageUrl) {
 ========================= */
 async function getDetail(url) {
   try {
+    url = safeDecode(url);
 
     const { data } = await axiosClient.get(url, {
       headers: HEADERS
@@ -222,8 +248,7 @@ async function getDetail(url) {
       category,
       sources
     };
-	
-  } catch (e) {
+  } catch {
     return null;
   }
 }
@@ -297,9 +322,11 @@ function getNextPageUrl(base, html) {
 }
 
 /* =========================
-   EPISODES (single movie)
+   EPISODES
 ========================= */
 async function getEpisodes(prefix, url) {
+  url = safeDecode(url);
+
   const detail = await getDetail(url);
 
   if (!detail) return [];
@@ -321,6 +348,8 @@ async function getEpisodes(prefix, url) {
 ========================= */
 async function getStream(prefix, url, epNum = 1) {
   try {
+    url = safeDecode(url);
+
     const res = await axiosClient.get(url, {
       headers: HEADERS,
       maxRedirects: 5
@@ -328,10 +357,11 @@ async function getStream(prefix, url, epNum = 1) {
 
     const data = res.data;
 
-    const finalPageUrl =
+    const finalPageUrl = safeDecode(
       res.request?.res?.responseUrl ||
       res.request?.responseURL ||
-      url;
+      url
+    );
 
     const detail = await getDetail(finalPageUrl);
 
@@ -339,13 +369,21 @@ async function getStream(prefix, url, epNum = 1) {
 
     const finalSources = [...(detail?.sources || [])];
 
+    const vivamaxLinks = [
+      ...String(data || "").matchAll(/https?:\/\/vivamax\.cam\/movies\/[^"'<> ]+/gi)
+    ].map(m => m[0]);
+
+    for (const vivamaxUrl of uniq(vivamaxLinks)) {
+      const sources = await resolveVivamaxMovie(vivamaxUrl);
+      finalSources.push(...sources);
+    }
+
     if (/vivamax\.cam\/movies\//i.test(finalPageUrl)) {
       const sources = await resolveVivamaxMovie(finalPageUrl);
       finalSources.push(...sources);
     }
 
     for (const serverUrl of serverLinks) {
-	  
       if (/\.(m3u8|mp4)(\?|$)/i.test(serverUrl)) {
         finalSources.push(serverUrl);
         continue;
@@ -372,7 +410,22 @@ async function getStream(prefix, url, epNum = 1) {
       }
     }
 
+    if (!finalSources.length) {
+      const slug = url
+        .replace(/\/$/, "")
+        .split("/")
+        .pop();
+
+      const fallbackSources = await resolveVivamaxMovie(
+        `https://vivamax.cam/movies/${slug}`
+      );
+
+      finalSources.push(...fallbackSources);
+    }
+
     const uniqueSources = uniq(finalSources);
+
+    console.log("[cat3] total sources:", uniqueSources.length);
 
     if (!uniqueSources.length) return null;
 
@@ -382,10 +435,12 @@ async function getStream(prefix, url, epNum = 1) {
         epNum,
         detail?.title || "Cat3Movie",
         uniqueSources.length > 1 ? `Server ${index + 1}` : "Cat3Movie",
-        "cat3"
+        "cat3",
+        /1a-1791\.com/i.test(src) ? "https://vivamax.cam/" : null
       )
     );
   } catch (e) {
+    console.log("[cat3] stream error:", e.message);
     return null;
   }
 }
@@ -395,5 +450,4 @@ module.exports = {
   getEpisodes,
   getStream,
   getNextPageUrl
-
 };
