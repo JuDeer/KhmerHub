@@ -293,7 +293,7 @@ async function getStream(prefix, url, epNum = 1) {
 
       if (
         /play\.cat3movie\.club\/embed\//i.test(serverUrl) ||
-        /vivamax\.cam\/(embed|player|api)\//i.test(serverUrl)
+        /vivamax\.cam\/(embed|player|api|movies)\//i.test(serverUrl)
       ) {
         const embedSources = await resolveCat3Embed(serverUrl);
         finalSources.push(...embedSources);
