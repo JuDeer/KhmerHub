@@ -388,8 +388,6 @@ module.exports = (builder, deps) => {
       if (id === "phumi2" || id === "cat3movie" || id === "xvideos") {
         const base = String(site.baseUrl || "").replace(/\/$/, "");
 
-        const base = String(site.baseUrl || "").replace(/\/$/, "");
-
         const startUrl = extra?.search
           ? id === "cat3movie"
             ? `${base}/?s=${encodeURIComponent(extra.search)}`
