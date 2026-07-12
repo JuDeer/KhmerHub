@@ -156,7 +156,7 @@ async function resolveVivamaxMovie(movieUrl) {
       for (const ep of server.episodes || []) {
         if (!ep.url) continue;
 
-        const [videoUrl] = String(ep.url).split("|");
+        const [videoUrl, language, subtitleUrl] = ep.url.split("|");
 
         if (videoUrl) {
           sources.push(videoUrl.trim());
@@ -430,15 +430,24 @@ async function getStream(prefix, url, epNum = 1) {
     if (!uniqueSources.length) return null;
 
     return uniqueSources.map((src, index) =>
-      buildStream(
-        src,
+    return uniqueSources.map((src, index) => ({
+      ...buildStream(
+        src.url,
         epNum,
         detail?.title || "Cat3Movie",
         uniqueSources.length > 1 ? `Server ${index + 1}` : "Cat3Movie",
         "cat3",
-        /1a-1791\.com/i.test(src) ? "https://vivamax.cam/" : null
-      )
-    );
+        /1a-1791\.com/i.test(src.url) ? "https://vivamax.cam/" : null
+      ),
+      subtitles: src.subtitle
+        ? [
+            {
+              url: src.subtitle,
+              lang: src.language || "English"
+            }
+          ]
+        : undefined
+    }));
   } catch (e) {
     console.log("[cat3] stream error:", e.message);
     return null;
