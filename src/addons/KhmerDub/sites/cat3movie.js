@@ -339,6 +339,11 @@ async function getStream(prefix, url, epNum = 1) {
 
     const finalSources = [...(detail?.sources || [])];
 
+    if (/vivamax\.cam\/movies\//i.test(finalPageUrl)) {
+      const sources = await resolveVivamaxMovie(finalPageUrl);
+      finalSources.push(...sources);
+    }
+
     for (const serverUrl of serverLinks) {
 	  
       if (/\.(m3u8|mp4)(\?|$)/i.test(serverUrl)) {
