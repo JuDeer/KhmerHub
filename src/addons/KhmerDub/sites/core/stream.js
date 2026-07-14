@@ -53,12 +53,33 @@ async function fetchKhmerDramaDetail(khmerDramaUrl) {
     servers = [];
   }
 
-  const urls = servers
-    .flatMap((server) => server.episodes || [])
-    .map((ep) => {
-      if (typeof ep === "string") return ep;
-      return ep?.url || ep?.file || ep?.src || "";
-    })
+  const episodeMap = new Map();
+
+  servers.forEach((server) => {
+    const episodes = Array.isArray(server.episodes) ? server.episodes : [];
+
+    episodes.forEach((ep, index) => {
+      const epName =
+        typeof ep === "object" && ep?.episode_name
+          ? String(ep.episode_name).trim()
+          : String(index + 1);
+
+      const epUrl =
+        typeof ep === "string"
+          ? ep
+          : ep?.url || ep?.file || ep?.src || "";
+
+      if (!episodeMap.has(epName)) {
+        episodeMap.set(epName, epUrl || "");
+      } else if (!episodeMap.get(epName) && epUrl) {
+        episodeMap.set(epName, epUrl);
+      }
+    });
+  });
+
+  const urls = [...episodeMap.entries()]
+    .sort((a, b) => Number(a[0]) - Number(b[0]))
+    .map(([, url]) => url)
     .filter(Boolean);
 
   if (!urls.length) return null;
