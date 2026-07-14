@@ -87,7 +87,9 @@ async function fetchKhmerDramaDetail(khmerDramaUrl) {
   return {
     title: found.phoneticTitle || found.title || "PhumiVIP",
     thumbnail: found.poster || found.backdrop || "",
-    urls
+    urls,
+    maxEp: urls.length,
+    sourceType: "khmerdrama-api"
   };
 }
 
@@ -142,7 +144,9 @@ async function getStreamDetail(postId, seriesUrl = "") {
 
   POST_INFO.set(postId, {
     ...(POST_INFO.get(postId) || {}),
-    detail
+    detail,
+    maxEp: detail.maxEp || POST_INFO.get(postId)?.maxEp || null,
+    sourceType: detail.sourceType || POST_INFO.get(postId)?.sourceType
   });
 
   return detail;
