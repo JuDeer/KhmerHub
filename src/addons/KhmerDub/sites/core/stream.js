@@ -102,14 +102,6 @@ async function getStreamDetail(postId, seriesUrl = "") {
             urls
           };
         }
-
-        if (urls.length) {
-          detail = {
-            title: "PhumiVIP",
-            thumbnail: "",
-            urls
-          };
-        }
       }
     } catch {}
   }
