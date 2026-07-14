@@ -13,33 +13,61 @@ const { fetchVipWordpressDetail } = require("./wordpress");
 const FILE_REGEX =
   /file\s*:\s*["'](https?:\/\/[^"']+\.mp4(?:\?[^"']+)?)["']/gi;
 
-function extractPlayerListUrls(html = "") {
-  const text = String(html || "")
-    .replace(/\\\//g, "/")
-    .replace(/&amp;/g, "&")
-    .replace(/&quot;/g, '"');
-
-  const urls = [];
-  const re = /['"]file['"]\s*:\s*['"](https?:\/\/[^'"]+)['"]/gi;
-
-  let match;
-  while ((match = re.exec(text)) !== null) {
-    urls.push(match[1]);
-  }
-
-  return urls;
-}
-
 function extractKhmerDramaUrl(html = "") {
   const text = String(html || "")
     .replace(/\\\//g, "/")
     .replace(/&amp;/g, "&");
 
   const match = text.match(
-    /https?:\/\/video4khmer\.khmerdrama\.org\/tv-series\/[^"'<>\\\s]+/i
+    /https?:\/\/video4khmer\.khmerdrama\.org\/(?:tv-series|movies)\/[^"'<>\\\s]+/i
   );
 
   return match ? match[0] : null;
+}
+
+async function fetchKhmerDramaDetail(khmerDramaUrl) {
+  const slug = new URL(khmerDramaUrl).pathname
+    .split("/")
+    .filter(Boolean)
+    .pop();
+
+  const apiUrl =
+    `https://video4khmer.khmerdrama.org/api/movies.php?find_slug=${encodeURIComponent(slug)}&paginated=1`;
+
+  const { data } = await axiosClient.get(apiUrl, {
+    headers: {
+      "User-Agent": "Mozilla/5.0",
+      Referer: khmerDramaUrl
+    }
+  });
+
+  const found = Array.isArray(data?.data) ? data.data[0] : data?.data;
+  if (!found) return null;
+
+  let servers = [];
+  try {
+    servers = typeof found.servers === "string"
+      ? JSON.parse(found.servers)
+      : found.servers || [];
+  } catch {
+    servers = [];
+  }
+
+  const urls = servers
+    .flatMap((server) => server.episodes || [])
+    .map((ep) => {
+      if (typeof ep === "string") return ep;
+      return ep?.url || ep?.file || ep?.src || "";
+    })
+    .filter(Boolean);
+
+  if (!urls.length) return null;
+
+  return {
+    title: found.phoneticTitle || found.title || "PhumiVIP",
+    thumbnail: found.poster || found.backdrop || "",
+    urls
+  };
 }
 
 /* =========================
@@ -82,25 +110,7 @@ async function getStreamDetail(postId, seriesUrl = "") {
       const khmerDramaUrl = extractKhmerDramaUrl(data);
 
       if (khmerDramaUrl) {
-        const { data: kdData } = await axiosClient.get(khmerDramaUrl, {
-          headers: {
-            "User-Agent": "Mozilla/5.0",
-            Referer: seriesUrl
-          }
-        });
-
-        const urls = [
-          ...extractPlayerListUrls(kdData),
-          ...extractVideoLinks(kdData)
-        ].filter(Boolean);
-
-        if (urls.length) {
-          detail = {
-            title: "PhumiVIP",
-            thumbnail: "",
-            urls
-          };
-        }
+        detail = await fetchKhmerDramaDetail(khmerDramaUrl);
       }
     } catch {}
   }
@@ -137,7 +147,6 @@ async function getStream(prefix, seriesUrl, episode) {
   const providerName = providerNames[prefix] || "KhmerDub";
   const groupName = prefix || "khmerdub";
 
-  // Sunday fallback streaming
   if (prefix === "sunday" && !postId) {
     const { data } = await axiosClient.get(seriesUrl, {
       headers: {
@@ -164,7 +173,6 @@ async function getStream(prefix, seriesUrl, episode) {
 
   let detail = await getStreamDetail(postId, seriesUrl);
 
-  // vip direct fallback
   if (!detail && prefix === "vip") {
     try {
       const { data } = await axiosClient.get(seriesUrl, {
@@ -202,11 +210,6 @@ async function getStream(prefix, seriesUrl, episode) {
     url = resolved;
   }
 
-  console.log("[VIP final stream url]", {
-    episode,
-    url
-  });
-
   return buildStream(
     url,
     episode,
@@ -214,7 +217,7 @@ async function getStream(prefix, seriesUrl, episode) {
     providerName,
     groupName,
     seriesUrl || "https://phumikhmer.vip/"
-  );  
+  );
 }
 
 module.exports = {
