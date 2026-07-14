@@ -80,7 +80,6 @@ async function getStreamDetail(postId, seriesUrl = "") {
       });
 
       const khmerDramaUrl = extractKhmerDramaUrl(data);
-      console.log("[VIP khmerdrama url]", khmerDramaUrl);
 
       if (khmerDramaUrl) {
         const { data: kdData } = await axiosClient.get(khmerDramaUrl, {
