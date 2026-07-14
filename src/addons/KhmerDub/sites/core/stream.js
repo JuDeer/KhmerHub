@@ -121,7 +121,7 @@ async function getStreamDetail(postId, seriesUrl = "") {
     }
   }
 
-  if (!detail && seriesUrl) {
+  if (seriesUrl) {
     try {
       const { data } = await axiosClient.get(seriesUrl, {
         headers: {
@@ -133,7 +133,15 @@ async function getStreamDetail(postId, seriesUrl = "") {
       const khmerDramaUrl = extractKhmerDramaUrl(data);
 
       if (khmerDramaUrl) {
-        detail = await fetchKhmerDramaDetail(khmerDramaUrl);
+        const kdDetail = await fetchKhmerDramaDetail(khmerDramaUrl);
+
+        if (
+          kdDetail &&
+          Array.isArray(kdDetail.urls) &&
+          (!detail || kdDetail.urls.length > (detail.urls?.length || 0))
+        ) {
+          detail = kdDetail;
+        }
       }
     } catch {}
   }
