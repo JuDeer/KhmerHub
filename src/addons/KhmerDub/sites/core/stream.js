@@ -13,6 +13,23 @@ const { fetchVipWordpressDetail } = require("./wordpress");
 const FILE_REGEX =
   /file\s*:\s*["'](https?:\/\/[^"']+\.mp4(?:\?[^"']+)?)["']/gi;
 
+function extractPlayerListUrls(html = "") {
+  const text = String(html || "")
+    .replace(/\\\//g, "/")
+    .replace(/&amp;/g, "&")
+    .replace(/&quot;/g, '"');
+
+  const urls = [];
+  const re = /['"]file['"]\s*:\s*['"](https?:\/\/[^'"]+)['"]/gi;
+
+  let match;
+  while ((match = re.exec(text)) !== null) {
+    urls.push(match[1]);
+  }
+
+  return urls;
+}
+
 function extractKhmerDramaUrl(html = "") {
   const text = String(html || "")
     .replace(/\\\//g, "/")
@@ -73,7 +90,18 @@ async function getStreamDetail(postId, seriesUrl = "") {
           }
         });
 
-        const urls = extractVideoLinks(kdData);
+        const urls = [
+          ...extractPlayerListUrls(kdData),
+          ...extractVideoLinks(kdData)
+        ].filter(Boolean);
+
+        if (urls.length) {
+          detail = {
+            title: "PhumiVIP",
+            thumbnail: "",
+            urls
+          };
+        }
 
         if (urls.length) {
           detail = {
