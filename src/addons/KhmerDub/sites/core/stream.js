@@ -13,6 +13,18 @@ const { fetchVipWordpressDetail } = require("./wordpress");
 const FILE_REGEX =
   /file\s*:\s*["'](https?:\/\/[^"']+\.mp4(?:\?[^"']+)?)["']/gi;
 
+function extractKhmerDramaUrl(html = "") {
+  const text = String(html || "")
+    .replace(/\\\//g, "/")
+    .replace(/&amp;/g, "&");
+
+  const match = text.match(
+    /https?:\/\/video4khmer\.khmerdrama\.org\/tv-series\/[^"'<>\\\s]+/i
+  );
+
+  return match ? match[0] : null;
+}
+
 /* =========================
    STREAM DETAIL
 ========================= */
@@ -39,6 +51,39 @@ async function getStreamDetail(postId, seriesUrl = "") {
     if (validResults.length) {
       detail = validResults.sort((a, b) => b.urls.length - a.urls.length)[0];
     }
+  }
+
+  if (!detail && seriesUrl) {
+    try {
+      const { data } = await axiosClient.get(seriesUrl, {
+        headers: {
+          "User-Agent": "Mozilla/5.0",
+          Referer: seriesUrl
+        }
+      });
+
+      const khmerDramaUrl = extractKhmerDramaUrl(data);
+      console.log("[VIP khmerdrama url]", khmerDramaUrl);
+
+      if (khmerDramaUrl) {
+        const { data: kdData } = await axiosClient.get(khmerDramaUrl, {
+          headers: {
+            "User-Agent": "Mozilla/5.0",
+            Referer: seriesUrl
+          }
+        });
+
+        const urls = extractVideoLinks(kdData);
+
+        if (urls.length) {
+          detail = {
+            title: "PhumiVIP",
+            thumbnail: "",
+            urls
+          };
+        }
+      }
+    } catch {}
   }
 
   if (!detail) {
