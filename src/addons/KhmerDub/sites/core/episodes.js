@@ -13,7 +13,35 @@ async function getEpisodes(prefix, seriesUrl) {
 
   // Sunday playlist fallback
   if (!postId && prefix === "sunday") {
-    const { data } = await axiosClient.get(seriesUrl);
+    let data = "";
+
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      try {
+        const response = await axiosClient.get(seriesUrl, {
+          headers: {
+            "User-Agent":
+              "Mozilla/5.0 (Windows NT 10.0; Win64; x64) " +
+              "AppleWebKit/537.36 Chrome/120 Safari/537.36",
+            Referer: seriesUrl
+          }
+        });
+
+        data = response.data || "";
+
+        if (data) break;
+      } catch (err) {
+        console.log(
+          `[sunday] episode page attempt ${attempt} failed:`,
+          err?.response?.status || err?.message
+        );
+
+        if (attempt < 3) {
+          await new Promise(resolve => setTimeout(resolve, attempt * 700));
+        }
+      }
+    }
+
+    if (!data) return [];
 
     FILE_REGEX.lastIndex = 0;
 
