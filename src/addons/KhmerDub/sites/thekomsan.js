@@ -465,34 +465,16 @@ function extractCatalogPoster($el) {
 /* =========================
    CATALOG
 ========================= */
-async function getCatalogItems(prefix, siteConfig, initialUrl, skip = 0) {
+async function getCatalogItems(prefix, siteConfig, initialUrl) {
   try {
-    let pageUrl = initialUrl;
-    let html = "";
+    if (!initialUrl) return [];
 
-    const pageSize = Number(siteConfig.pageSize || 20);
-    const pageNumber = Math.floor(Number(skip || 0) / pageSize);
-
-    for (let page = 0; page <= pageNumber; page++) {
-      const response = await axiosClient.get(pageUrl, {
-        headers: {
-          ...PAGE_HEADERS,
-          Referer: siteConfig.baseUrl || BASE_URL
-        }
-      });
-
-      html = response.data;
-
-      if (page < pageNumber) {
-        const nextUrl = getNextPageUrl(pageUrl, html);
-
-        if (!nextUrl) {
-          return [];
-        }
-
-        pageUrl = nextUrl;
+    const { data: html } = await axiosClient.get(initialUrl, {
+      headers: {
+        ...PAGE_HEADERS,
+        Referer: siteConfig.baseUrl || BASE_URL
       }
-    }
+    });
 
     const $ = cheerio.load(html);
     const posts = findCatalogPosts($);
@@ -508,20 +490,28 @@ async function getCatalogItems(prefix, siteConfig, initialUrl, skip = 0) {
       const title =
         cleanTitle(linkEl.attr("title")) ||
         cleanTitle($post.find("h2.entry-title").first().text()) ||
-        cleanTitle(linkEl.text());
+        cleanTitle($post.find("h3.entry-title").first().text()) ||
+        cleanTitle(linkEl.text()) ||
+        cleanTitle($post.find("img").first().attr("alt"));
 
-      const link = absolutizeUrl(linkEl.attr("href") || "", pageUrl);
+      const link = absolutizeUrl(
+        linkEl.attr("href") || "",
+        initialUrl
+      );
 
       if (!title || !link) return null;
 
-      const image = $post.find("img.snip-thumbnail").first();
+      const image = $post
+        .find("img.snip-thumbnail, img")
+        .first();
 
-      let poster =
+      const poster = normalizeTheKomsanPoster(
         image.attr("data-src") ||
+        image.attr("data-original") ||
+        image.attr("data-lazy-src") ||
         image.attr("src") ||
-        "";
-
-      poster = normalizeTheKomsanPoster(poster);
+        ""
+      );
 
       return {
         id: `${prefix}:${encodeURIComponent(link)}`,
@@ -534,8 +524,8 @@ async function getCatalogItems(prefix, siteConfig, initialUrl, skip = 0) {
   } catch (err) {
     console.log(
       `[${SITE_ID}] getCatalogItems failed:`,
-      err.response?.status,
-      err.config?.url || "",
+      err.response?.status || "",
+      err.config?.url || initialUrl || "",
       err.message
     );
 
@@ -550,36 +540,55 @@ function getNextPageUrl(base, html) {
   try {
     const $ = cheerio.load(html);
 
-    let nextUrl =
-      $("#load-more-link").attr("data-load") ||
-      $("#blog-pager a[data-load]").first().attr("data-load") ||
+    const pager =
+      $("#load-more-link").first().length
+        ? $("#load-more-link").first()
+        : $("a.blog-pager-older-link").first();
+
+    const dataLoad =
+      pager.attr("data-load") ||
       $("a.blog-pager-older-link[data-load]").first().attr("data-load") ||
       "";
 
-    if (!nextUrl) {
-      return null;
+    if (dataLoad) {
+      return absolutizeUrl(dataLoad, base || BASE_URL);
     }
 
-    nextUrl = String(nextUrl)
-      .replace(/&amp;/gi, "&")
-      .replace(/&#38;/gi, "&")
-      .trim();
+    const href =
+      $("#Blog1_blog-pager-older-link").attr("href") ||
+      $("a.blog-pager-older-link").attr("href") ||
+      $("#blog-pager-older-link").attr("href") ||
+      $('a[rel="next"]').attr("href") ||
+      "";
 
     if (
-      !nextUrl ||
-      nextUrl === "#" ||
-      /^javascript:/i.test(nextUrl)
+      href &&
+      !/^javascript:/i.test(href) &&
+      href !== "#"
     ) {
-      return null;
+      return absolutizeUrl(href, base || BASE_URL);
     }
 
-    return absolutizeUrl(nextUrl, base || BASE_URL);
-  } catch (err) {
-    console.log(
-      `[${SITE_ID}] getNextPageUrl failed:`,
-      err.message
-    );
+    const posts = findCatalogPosts($);
+    if (!posts.length) return null;
 
+    const lastPost = $(posts[posts.length - 1]);
+
+    const published =
+      lastPost.find('meta[itemprop="datePublished"]').attr("content") ||
+      lastPost.find("time[datetime]").attr("datetime") ||
+      lastPost.find(".published").attr("datetime") ||
+      "";
+
+    if (!published) return null;
+
+    const next = new URL("/search", base || BASE_URL);
+    next.searchParams.set("updated-max", published);
+    next.searchParams.set("max-results", "20");
+
+    return next.toString();
+  } catch (err) {
+    console.log(`[${SITE_ID}] getNextPageUrl failed:`, err.message);
     return null;
   }
 }
