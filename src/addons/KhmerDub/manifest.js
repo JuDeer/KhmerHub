@@ -7,6 +7,7 @@ const sites = [
   { id: "vip", name: "PhumiVip", type: "series", enabled: true },
   { id: "sunday", name: "SundayDrama", type: "series", enabled: true },
   { id: "v4khmer", name: "Video4Khmer", type: "series", enabled: false },
+  { id: "thekomsan", name: "TheKomsan", type: "series", enabled: true },	
   { id: "phumi2", name: "PhumiClub", type: "series", enabled: false },
   { id: "khmerave", name: "KhmerAve", type: "series", enabled: true },
   { id: "merlkon", name: "Merlkon", type: "series", enabled: true },
@@ -41,7 +42,7 @@ module.exports = {
         };
       }
 
-      if (site.id === "phumi2") {
+      if (site.id === "phumi2" || site.id === "thekomsan")
         return {
           type: site.type,
           id: site.id,
@@ -49,7 +50,7 @@ module.exports = {
           extra: [
             { name: "search", isRequired: false },
             { name: "skip", isRequired: false },
-            { name: "genre", isRequired: false, options: ["Khmer", "China", "Korean"] }
+            { name: "genre", isRequired: false, options: ["OnAir", "China", "Korean"] }
           ]
         };
       }
