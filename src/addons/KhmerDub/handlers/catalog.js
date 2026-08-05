@@ -194,19 +194,7 @@ module.exports = (builder, deps) => {
               postHtml.match(/<img[^>]+(?:data-src|src)=["']([^"']+)/i)?.[1] ||
               "";
 
-            if (!title || !link) return null;
-
-            if (postId) {
-              URL_TO_POSTID.set(link, postId);
-
-              POST_INFO.set(postId, {
-                ...(POST_INFO.get(postId) || {}),
-                blogId: blogId || null,
-                sourceType: "blogger",
-                cleanTitle: title,
-                pageHtml: postHtml
-              });
-            }		  
+            if (!title || !link) return null;	  
 
             const normalizedPoster = normalizePoster(poster);
 
