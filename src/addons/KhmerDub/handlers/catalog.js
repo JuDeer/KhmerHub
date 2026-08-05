@@ -202,7 +202,7 @@ module.exports = (builder, deps) => {
                 cleanTitle: title,
                 pageHtml: postHtml
               });
-            }}			  
+            }			  
 
             const normalizedPoster = normalizePoster(poster);
 
