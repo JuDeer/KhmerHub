@@ -117,170 +117,91 @@ module.exports = (builder, deps) => {
         return { metas: mapMetas(uniq, type) };
       }
 	  
-	  // Sunday
-      if (id === "sunday" && extra?.genre) {
-        const startUrl = site.genreUrls?.[extra.genre];
-        if (!startUrl) return { metas: [] };
-
-        const WEBSITE_PAGE_SIZE = 30;
-        const PAGES_PER_BATCH = 1;
-
-        const skip = Number(extra?.skip || 0);
-        const targetPage = Math.floor(skip / WEBSITE_PAGE_SIZE) + 1;
-
-        let url = startUrl;
-        let currentPage = 1;
-        let allItems = [];
-
-        const base = String(site.baseUrl || "").replace(/\/$/, "");
-        const headers = {
-          "User-Agent":
-            "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Mobile Safari/537.36",
-          Referer: `${base}/`,
-        };
-
-        while (currentPage < targetPage && url) {
-          const { data } = await axiosClient.get(url, {
-            headers,
-            maxRedirects: 0,
-            validateStatus: status => status >= 200 && status < 400
-            });
-          const $ = cheerio.load(data);
-
-          const older =
-            $("a.blog-pager-older-link").attr("href") ||
-            $("#Blog1_blog-pager-older-link").attr("href") ||
-            "";
-
-          url = older ? older : null;
-          currentPage++;
-        }
-
-        for (let i = 0; i < PAGES_PER_BATCH && url; i++) {
-          const { data } = await axiosClient.get(url, {
-            headers,
-            maxRedirects: 0,
-            validateStatus: status => status >= 200 && status < 400
-            });
-          const $ = cheerio.load(data);
-
-          const articles = $("article.blog-post").toArray();
-
-          for (const el of articles) {
-            const $el = $(el);
-
-            const aImg = $el.find("a.entry-image-wrap").first();
-            const link = aImg.attr("href") || $el.find("h2.entry-title a").attr("href") || "";
-            const title =
-              (aImg.attr("title") || "").trim() ||
-              ($el.find("h2.entry-title a").first().text() || "").trim();
-
-            if (!title || !link) continue;
-
-            const img =
-              $el.find("img.entry-thumb").attr("src") ||
-              aImg.find("span[data-src]").attr("data-src") ||
-              aImg.find("img").attr("src") ||
-              "";
-
-            allItems.push({
-              id: `sunday:${encodeURIComponent(link)}`,
-              name: title,
-              poster: normalizePoster(img),
-            });
-          }
-
-          const older =
-            $("a.blog-pager-older-link").attr("href") ||
-            $("#Blog1_blog-pager-older-link").attr("href") ||
-            "";
-
-          url = older ? older : null;
-        }
-
-        const uniq = uniqById(allItems);
-
-        const type = SITE_TYPES[id] || SITE_TYPES.default;
-        return { metas: mapMetas(uniq, type) };
-      }
-
+      // SundayDrama - Blogger JSON feed
       if (id === "sunday") {
         const base = String(site.baseUrl || "").replace(/\/$/, "");
+        const pageSize = site.pageSize || 30;
+        const skip = Math.max(0, Number(extra?.skip || 0));
+        const startIndex = skip + 1;
 
-        const startUrl = extra?.search
-          ? `${base}/feeds/posts/default?q=${encodeURIComponent(extra.search)}&alt=json&max-results=20`
-          : `${base}/feeds/posts/default?alt=json&max-results=20`;
+        const genreLabels = {
+          Thai: "Thai Drama",
+          China: "Chinese Drama",
+          Korean: "Korean Drama"
+        };
 
-        const WEBSITE_PAGE_SIZE = 20;
-        const PAGES_PER_BATCH = 1;
+        let feedUrl;
 
-        const skip = Number(extra?.skip || 0);
-        const targetPage = Math.floor(skip / WEBSITE_PAGE_SIZE) + 1;
+        if (extra?.genre) {
+          const label = genreLabels[extra.genre];
+          if (!label) return { metas: [] };
 
-        let url = startUrl;
-        let currentPage = 1;
-        let allItems = [];
+          feedUrl =
+            `${base}/feeds/posts/default/-/${encodeURIComponent(label)}` +
+            `?alt=json&max-results=${pageSize}&start-index=${startIndex}`;
+        } else if (extra?.search) {
+          feedUrl =
+            `${base}/feeds/posts/default` +
+            `?alt=json&q=${encodeURIComponent(extra.search)}` +
+            `&max-results=${pageSize}&start-index=${startIndex}`;
+        } else {
+          feedUrl =
+            `${base}/feeds/posts/default` +
+            `?alt=json&max-results=${pageSize}&start-index=${startIndex}`;
+        }
 
         const headers = {
           "User-Agent":
-            "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Mobile Safari/537.36",
-          Referer: `${base}/`,
+            "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 " +
+            "(KHTML, like Gecko) Chrome/137.0.0.0 Mobile Safari/537.36",
+          Referer: `${base}/`
         };
 
-        while (currentPage < targetPage && url) {
-          const { data } = await axiosClient.get(url, {
-            headers,
-            maxRedirects: 0,
-            validateStatus: status => status >= 200 && status < 400
-            });
-          const $ = cheerio.load(data);
+        const { data } = await axiosClient.get(feedUrl, {
+          headers,
+          maxRedirects: 0,
+          validateStatus: status => status >= 200 && status < 400
+        });
 
-          const older =
-            $("a.blog-pager-older-link").attr("href") ||
-            $("#Blog1_blog-pager-older-link").attr("href") ||
-            "";
+        const entries = data?.feed?.entry || [];
 
-          url = older ? older : null;
-          currentPage++;
-        }
-
-        for (let i = 0; i < PAGES_PER_BATCH && url; i++) {
-          const { data } = await axiosClient.get(url, {
-            headers,
-            maxRedirects: 0,
-            validateStatus: status => status >= 200 && status < 400
-          });
-
-          const entries = data?.feed?.entry || [];
-
-          for (const entry of entries) {
-            const title = (entry?.title?.$t || "").trim();
+        const items = entries
+          .map((entry) => {
+            const title = String(entry?.title?.$t || "").trim();
 
             const link =
-              entry?.link?.find(item => item.rel === "alternate")?.href || "";
+              entry?.link?.find(item => item.rel === "alternate")?.href ||
+              "";
+
+            const postHtml =
+              entry?.content?.$t ||
+              entry?.summary?.$t ||
+              "";
 
             const poster =
               entry?.media$thumbnail?.url ||
-              entry?.content?.$t?.match(/<img[^>]+src=["']([^"']+)/i)?.[1] ||
+              postHtml.match(/<img[^>]+(?:data-src|src)=["']([^"']+)/i)?.[1] ||
               "";
 
-            if (!title || !link) continue;
+            if (!title || !link) return null;
 
-            allItems.push({
+            const normalizedPoster = normalizePoster(poster);
+
+            return {
               id: `sunday:${encodeURIComponent(link)}`,
               name: title,
-              poster: normalizePoster(poster),
-              background: normalizePoster(poster),
-            });
-          }
+              poster: normalizedPoster,
+              background: normalizedPoster
+            };
+          })
+          .filter(Boolean);
 
-          url = null;
-		}
-
-        const uniq = uniqById(allItems);
-
+        const uniq = uniqById(items);
         const type = SITE_TYPES[id] || SITE_TYPES.default;
-        return { metas: mapMetas(uniq, type) };
+
+        return {
+          metas: mapMetas(uniq, type)
+        };
       }
 
       // xVideos genre
