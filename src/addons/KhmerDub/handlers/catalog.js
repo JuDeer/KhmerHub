@@ -183,7 +183,7 @@ module.exports = (builder, deps) => {
             const postId =
               String(entry?.id?.$t || "").match(/post-(\d+)$/)?.[1] ||
               String(entry?.id?.$t || "").match(/posts\/default\/(\d+)/)?.[1] ||
-              "";
+              "";  
 
             const poster =
               entry?.media$thumbnail?.url ||
@@ -197,11 +197,12 @@ module.exports = (builder, deps) => {
 
               POST_INFO.set(postId, {
                 ...(POST_INFO.get(postId) || {}),
+                blogId: blogId || null,
                 sourceType: "blogger",
                 cleanTitle: title,
                 pageHtml: postHtml
               });
-            }			  
+            }}			  
 
             const normalizedPoster = normalizePoster(poster);
 
