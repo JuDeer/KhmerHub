@@ -9,6 +9,7 @@ const enabledSites = new Set(
 const engine = require("./sites/engine");
 const khmerave = require("./sites/khmerave");
 const v4khmer = require("./sites/v4khmer");
+const thekomsan = require("./sites/thekomsan");
 const phumi2 = require("./sites/phumi2");
 const cat3movie = require("./sites/cat3movie");
 const khmertv = require("./sites/khmertv");
@@ -35,6 +36,7 @@ const ENGINES = {
   khmerave,
   merlkon: khmerave,
   v4khmer,
+  thekomsan,
   phumi2,
   cat3movie,
   xvideos
