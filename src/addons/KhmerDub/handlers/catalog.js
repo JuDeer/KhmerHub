@@ -180,10 +180,14 @@ module.exports = (builder, deps) => {
               entry?.summary?.$t ||
               "";
 
-            const postId =
-              String(entry?.id?.$t || "").match(/post-(\d+)$/)?.[1] ||
-              String(entry?.id?.$t || "").match(/posts\/default\/(\d+)/)?.[1] ||
-              "";  
+            const entryId = String(entry?.id?.$t || "");
+
+            const idMatch = entryId.match(
+              /blog-(\d+)\.post-(\d+)$/i
+            );
+
+            const blogId = idMatch?.[1] || "";
+            const postId = idMatch?.[2] || "";
 
             const poster =
               entry?.media$thumbnail?.url ||
@@ -202,7 +206,7 @@ module.exports = (builder, deps) => {
                 cleanTitle: title,
                 pageHtml: postHtml
               });
-            }			  
+            }		  
 
             const normalizedPoster = normalizePoster(poster);
 
