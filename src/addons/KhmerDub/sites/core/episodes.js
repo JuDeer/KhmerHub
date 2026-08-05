@@ -12,10 +12,14 @@ async function getEpisodes(prefix, seriesUrl) {
     try {
       postId = await getPostId(seriesUrl);
     } catch (err) {
-      console.log(
-        "[sunday] getPostId failed:",
-        err?.response?.status || err?.message
-      );
+      const status = err?.response?.status;
+
+      if (status !== 429) {
+        console.log(
+          "[sunday] getPostId failed:",
+          status || err?.message
+        );
+      }
 
       return [];
     }
