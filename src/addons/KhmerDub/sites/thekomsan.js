@@ -336,7 +336,6 @@ function parseVideosArray(html, pageUrl = BASE_URL) {
     const arraySource = extractVideosArraySource(html);
 
     if (!arraySource) {
-      console.log(`[${SITE_ID}] videos array not found`);
       return [];
     }
 
@@ -371,10 +370,8 @@ function parseVideosArray(html, pageUrl = BASE_URL) {
       return true;
     });
 
-    console.log(`[${SITE_ID}] parsed ${uniqueVideos.length} episodes`);
     return uniqueVideos;
   } catch (err) {
-    console.log(`[${SITE_ID}] parseVideosArray failed:`, err.message);
     return [];
   }
 }
@@ -420,7 +417,6 @@ async function getPageDetail(url) {
     const videos = parseVideosArray(data, url);
 
     if (!videos.length) {
-      console.log(`[${SITE_ID}] no episodes found:`, url);
       return null;
     }
 
@@ -429,14 +425,7 @@ async function getPageDetail(url) {
       thumbnail,
       videos
     };
-  } catch (err) {
-    console.log(
-      `[${SITE_ID}] getPageDetail failed:`,
-      err.response?.status || "",
-      url,
-      err.message
-    );
-
+  } catch {
     return null;
   }
 }
@@ -526,8 +515,7 @@ function getNextPageUrl(base, html) {
     }
 
     return null;
-  } catch (err) {
-    console.log(`[${SITE_ID}] getNextPageUrl failed:`, err.message);
+  } catch {
     return null;
   }
 }
@@ -584,14 +572,7 @@ async function getCatalogItems(prefix, siteConfig, initialUrl, skip = 0) {
     });
 
     return uniqById(results.filter(Boolean));
-  } catch (err) {
-    console.log(
-      `[${SITE_ID}] getCatalogItems failed:`,
-      err.response?.status || "",
-      err.config?.url || initialUrl || "",
-      err.message
-    );
-
+  } catch {
     return [];
   }
 }
@@ -613,8 +594,7 @@ async function getEpisodes(prefix, seriesUrl) {
       thumbnail: detail.thumbnail || "",
       released: new Date().toISOString()
     }));
-  } catch (err) {
-    console.log(`[${SITE_ID}] getEpisodes failed:`, err.message);
+  } catch {
     return [];
   }
 }
@@ -691,8 +671,7 @@ async function getStream(prefix, seriesUrl, episode) {
       SITE_ID,
       seriesUrl
     );
-  } catch (err) {
-    console.log(`[${SITE_ID}] getStream failed:`, err.message);
+  } catch {
     return null;
   }
 }
