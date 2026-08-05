@@ -275,6 +275,7 @@ module.exports = (builder, deps) => {
           }
 
           url = null;
+		}
 
         const uniq = uniqById(allItems);
 
