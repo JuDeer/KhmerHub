@@ -42,7 +42,7 @@ module.exports = {
         };
       }
 
-      if (site.id === "phumi2" || site.id === "thekomsan")
+      if (site.id === "phumi2") {
         return {
           type: site.type,
           id: site.id,
@@ -53,6 +53,20 @@ module.exports = {
             { name: "genre", isRequired: false, options: ["OnAir", "China", "Korean"] }
           ]
         };
+      }		  
+
+      if (site.id === "thekomsan") {
+        return {
+          type: site.type,
+          id: site.id,
+          name: site.name,
+          extra: [
+            { name: "search", isRequired: false },
+            { name: "skip", isRequired: false },
+            { name: "genre", isRequired: false, options: ["OnAir", "Chinese", "Korean"] }
+          ]
+        };
+      }		
 
       if (site.id === "khmerave") {
         return {
