@@ -53,7 +53,6 @@ module.exports = {
             { name: "genre", isRequired: false, options: ["OnAir", "China", "Korean"] }
           ]
         };
-      }
 
       if (site.id === "khmerave") {
         return {
