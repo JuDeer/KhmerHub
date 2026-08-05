@@ -87,36 +87,104 @@ function normalizeTheKomsanPoster(url) {
 
 function normalizeEpisodeTitle(title, index) {
   const fallback = `Episode ${index + 1}`;
-  let value = cleanTitle(title);
+  if (!title) return fallback;
 
-  if (!value) return fallback;
+  const value = cleanTitle(title);
 
-  value = value
-    .replace(/^EPISODE\s*/i, "Episode ")
-    .replace(/^EP\s*/i, "Episode ");
-
-  value = value.replace(
-    /^Episode\s*(\d+)\s*(?:E|END)$/i,
-    "Episode $1 End"
+  const match = value.match(
+    /^(?:EPISODE|EP)[.\s_-]*(\d+)\s*(E|END)?$/i
   );
 
-  value = value.replace(
-    /^Episode\s*(\d+)\s*-\s*(?:E|END)$/i,
-    "Episode $1 End"
-  );
+  if (!match) return value;
 
-  return value;
+  const episodeNumber = Number(match[1]);
+  const isEnd = Boolean(match[2]);
+
+  return `Episode ${episodeNumber}${isEnd ? " End" : ""}`;
+}
+
+function parseVideosArray(html, baseUrl = BASE_URL) {
+  try {
+    if (!html) return [];
+
+    const patterns = [
+      /(?:const|let|var)\s+videos\s*=\s*(\[[\s\S]*?\])\s*;/i,
+      /window\.videos\s*=\s*(\[[\s\S]*?\])\s*;/i,
+      /options\.player_list\s*=\s*(\[[\s\S]*?\])\s*;/i
+    ];
+
+    let raw = "";
+
+    for (const pattern of patterns) {
+      const match = html.match(pattern);
+
+      if (match?.[1]) {
+        raw = match[1];
+        break;
+      }
+    }
+
+    if (!raw) {
+      console.log(`[${SITE_ID}] videos array not found`);
+      return [];
+    }
+
+    // TheKomsan arrays are usually valid JSON except for trailing commas.
+    raw = raw
+      .replace(/,\s*]/g, "]")
+      .replace(/,\s*}/g, "}");
+
+    let parsed;
+
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      // Fallback for JavaScript object syntax using unquoted keys/single quotes.
+      const normalized = raw
+        .replace(/([{,]\s*)([A-Za-z_$][\w$]*)\s*:/g, '$1"$2":')
+        .replace(/'/g, '"')
+        .replace(/,\s*]/g, "]")
+        .replace(/,\s*}/g, "}");
+
+      parsed = JSON.parse(normalized);
+    }
+
+    if (!Array.isArray(parsed)) return [];
+
+    const videos = parsed
+      .map((item, index) => {
+        const file = normalizeVideoUrl(
+          item?.file || item?.url || item?.src || "",
+          baseUrl
+        );
+
+        if (!file) return null;
+
+        return {
+          title: normalizeEpisodeTitle(
+            item?.title || item?.label || item?.name,
+            index
+          ),
+          file
+        };
+      })
+      .filter(Boolean);
+
+    console.log(`[${SITE_ID}] parsed ${videos.length} episodes`);
+
+    return videos;
+  } catch (err) {
+    console.log(`[${SITE_ID}] parseVideosArray failed:`, err.message);
+    return [];
+  }
 }
 
 function normalizeVideoUrl(url, baseUrl = BASE_URL) {
   if (!url) return "";
 
-  let value = decodeHtmlEntities(String(url).trim());
-
-  value = value
-    .replace(/\\\//g, "/")
-    .replace(/\\u0026/gi, "&")
-    .replace(/\\x26/gi, "&");
+  let value = String(url)
+    .trim()
+    .replace(/&amp;/g, "&");
 
   if (value.startsWith("//")) {
     value = `https:${value}`;
@@ -364,30 +432,45 @@ async function getPageDetail(url) {
       headers: {
         ...PAGE_HEADERS,
         Referer: BASE_URL
-      },
-      timeout: 20000
+      }
     });
 
     const $ = cheerio.load(data);
 
-    const title = extractPageTitle($);
-    const thumbnail = extractPagePoster($);
-    const releasedDate = extractPublishedDate($);
+    const title =
+      cleanTitle($("h1.entry-title").first().text()) ||
+      cleanTitle($('meta[property="og:title"]').attr("content")) ||
+      cleanTitle($("title").text());
+
+    let thumbnail =
+      $('meta[property="og:image"]').attr("content") ||
+      $('meta[name="twitter:image"]').attr("content") ||
+      $("#my-poster img").first().attr("src") ||
+      $(".post-body img").first().attr("src") ||
+      "";
+
+    thumbnail = normalizeTheKomsanPoster(thumbnail);
+
     const videos = parseVideosArray(data, url);
 
     if (!videos.length) {
-      console.log(`[${SITE_ID}] no videos found:`, url);
+      console.log(`[${SITE_ID}] no episodes found:`, url);
       return null;
     }
 
     return {
       title,
       thumbnail,
-      released: releasedDate?.toISOString() || null,
       videos
     };
   } catch (err) {
-    console.log(`[${SITE_ID}] getPageDetail failed:`, err.message);
+    console.log(
+      `[${SITE_ID}] getPageDetail failed:`,
+      err.response?.status,
+      url,
+      err.message
+    );
+
     return null;
   }
 }
@@ -599,27 +682,20 @@ function getNextPageUrl(base, html) {
 async function getEpisodes(prefix, seriesUrl) {
   try {
     const detail = await getPageDetail(seriesUrl);
-    if (!detail?.videos?.length) return [];
 
-    return detail.videos.map((video, index) => {
-      const episodeNumber = index + 1;
+    if (!detail?.videos?.length) {
+      return [];
+    }
 
-      return {
-        id:
-          `${prefix}:${encodeURIComponent(seriesUrl)}` +
-          `:1:${episodeNumber}`,
-
-        title:
-          video.title ||
-          `Episode ${String(episodeNumber).padStart(2, "0")}`,
-
-        seriesTitle: detail.title,
-        season: 1,
-        episode: episodeNumber,
-        thumbnail: detail.thumbnail || "",
-        released: detail.released || new Date().toISOString()
-      };
-    });
+    return detail.videos.map((video, index) => ({
+      id: `${prefix}:${encodeURIComponent(seriesUrl)}:1:${index + 1}`,
+      title: video.title || `Episode ${index + 1}`,
+      seriesTitle: detail.title,
+      season: 1,
+      episode: index + 1,
+      thumbnail: detail.thumbnail || "",
+      released: new Date().toISOString()
+    }));
   } catch (err) {
     console.log(`[${SITE_ID}] getEpisodes failed:`, err.message);
     return [];
