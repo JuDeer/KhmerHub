@@ -249,32 +249,28 @@ module.exports = (builder, deps) => {
             headers,
             maxRedirects: 0,
             validateStatus: status => status >= 200 && status < 400
-            });
-          const $ = cheerio.load(data);
+          });
 
-          const articles = $("article.blog-post").toArray();
+          const entries = data?.feed?.entry || [];
 
-          for (const el of articles) {
-            const $el = $(el);
+          for (const entry of entries) {
+            const title = (entry?.title?.$t || "").trim();
 
-            const aImg = $el.find("a.entry-image-wrap").first();
-            const link = aImg.attr("href") || $el.find("h2.entry-title a").attr("href") || "";
-            const title =
-              (aImg.attr("title") || "").trim() ||
-              ($el.find("h2.entry-title a").first().text() || "").trim();
+            const link =
+              entry?.link?.find(item => item.rel === "alternate")?.href || "";
+
+            const poster =
+              entry?.media$thumbnail?.url ||
+              entry?.content?.$t?.match(/<img[^>]+src=["']([^"']+)/i)?.[1] ||
+              "";
 
             if (!title || !link) continue;
-
-            const img =
-              $el.find("img.entry-thumb").attr("src") ||
-              aImg.find("span[data-src]").attr("data-src") ||
-              aImg.find("img").attr("src") ||
-              "";
 
             allItems.push({
               id: `sunday:${encodeURIComponent(link)}`,
               name: title,
-              poster: normalizePoster(img),
+              poster: normalizePoster(poster),
+              background: normalizePoster(poster),
             });
           }
 
