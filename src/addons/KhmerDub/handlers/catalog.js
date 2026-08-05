@@ -274,13 +274,7 @@ module.exports = (builder, deps) => {
             });
           }
 
-          const older =
-            $("a.blog-pager-older-link").attr("href") ||
-            $("#Blog1_blog-pager-older-link").attr("href") ||
-            "";
-
-          url = older ? older : null;
-        }
+          url = null;
 
         const uniq = uniqById(allItems);
 
