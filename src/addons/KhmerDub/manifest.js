@@ -7,7 +7,7 @@ const sites = [
   { id: "vip", name: "PhumiVip", type: "series", enabled: true },
   { id: "sunday", name: "SundayDrama", type: "series", enabled: true },
   { id: "v4khmer", name: "Video4Khmer", type: "series", enabled: false },
-  { id: "phumi2", name: "PhumiClub", type: "series", enabled: true },
+  { id: "phumi2", name: "PhumiClub", type: "series", enabled: false },
   { id: "khmerave", name: "KhmerAve", type: "series", enabled: true },
   { id: "merlkon", name: "Merlkon", type: "series", enabled: true },
   { id: "idrama", name: "iDramaHD", type: "series", enabled: true }, 
