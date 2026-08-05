@@ -1,961 +1,665 @@
-import { fetchText, fetchJson } from "../utils/fetch.js";
+const cheerio = require("cheerio");
+const axiosClient = require("../utils/fetch");
+const {
+  normalizePoster,
+  uniqById
+} = require("../utils/helpers");
 
-const BASE_URL = "https://www.thekomsan.com";
-const BLOG_ID = "868925748946685134";
-const FEED_URL = `${BASE_URL}/feeds/posts/default`;
+const {
+  resolvePlayerUrl,
+  resolveOkEmbed,
+  buildStream
+} = require("../utils/streamResolvers");
 
-const DEFAULT_LIMIT = 20;
-const MAX_LIMIT = 100;
+/* =========================
+   CONFIG
+========================= */
+const PAGE_HEADERS = {
+  "User-Agent":
+    "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Mobile Safari/537.36",
+  Accept:
+    "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+  "Accept-Language": "en-US,en;q=0.9"
+};
 
-const VIDEO_EXTENSIONS =
-  /\.(?:m3u8|mp4|mkv|webm|mov|avi)(?:[?#].*)?$/i;
+const DEFAULT_BASE_URL = "https://www.thekomsan.com";
+const SITE_NAME = "TheKomsan";
+const STREAM_GROUP = "thekomsan";
 
-const EMBED_HOSTS =
-  /(?:youtube\.com|youtu\.be|ok\.ru|dailymotion\.com|dai\.ly|facebook\.com|drive\.google\.com|streamtape\.com|dood|mixdrop|filemoon|vidhide|voe\.sx|uqload|streamwish|vidmoly|sendvid)/i;
+/* =========================
+   HELPERS
+========================= */
+function absolutizeUrl(url, baseUrl = DEFAULT_BASE_URL) {
+  if (!url) return "";
 
-/**
- * Convert HTML entities without requiring a browser DOM.
- */
-function decodeHtml(value = "") {
-  return String(value)
-    .replace(/&#(\d+);/g, (_, code) =>
-      String.fromCodePoint(Number.parseInt(code, 10))
-    )
-    .replace(/&#x([0-9a-f]+);/gi, (_, code) =>
-      String.fromCodePoint(Number.parseInt(code, 16))
-    )
+  try {
+    return new URL(String(url).trim(), baseUrl).toString();
+  } catch {
+    return String(url).trim();
+  }
+}
+
+function cleanTitle(text) {
+  return String(text || "")
     .replace(/&nbsp;/gi, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function decodeHtmlEntities(text) {
+  if (!text) return "";
+
+  return String(text)
     .replace(/&amp;/gi, "&")
     .replace(/&quot;/gi, '"')
-    .replace(/&#39;|&apos;/gi, "'")
+    .replace(/&#39;/gi, "'")
+    .replace(/&apos;/gi, "'")
     .replace(/&lt;/gi, "<")
-    .replace(/&gt;/gi, ">");
-}
-
-/**
- * Remove HTML tags and normalize whitespace.
- */
-function stripHtml(value = "") {
-  return decodeHtml(
-    String(value)
-      .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, " ")
-      .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, " ")
-      .replace(/<br\s*\/?>/gi, " ")
-      .replace(/<\/p>/gi, " ")
-      .replace(/<[^>]+>/g, " ")
-  )
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-function normalizeUrl(value, baseUrl = BASE_URL) {
-  if (!value) {
-    return "";
-  }
-
-  let url = decodeHtml(String(value).trim())
-    .replace(/\\u0026/gi, "&")
-    .replace(/\\u003d/gi, "=")
-    .replace(/\\u002f/gi, "/")
-    .replace(/\\\//g, "/")
-    .replace(/^['"]|['"]$/g, "");
-
-  if (!url) {
-    return "";
-  }
-
-  if (url.startsWith("//")) {
-    url = `https:${url}`;
-  }
-
-  try {
-    return new URL(url, baseUrl).href;
-  } catch {
-    return url;
-  }
-}
-
-function makeAbsoluteUrl(value) {
-  return normalizeUrl(value, BASE_URL);
-}
-
-function removeDuplicateItems(items, keyBuilder) {
-  const seen = new Set();
-
-  return items.filter((item) => {
-    const key = keyBuilder(item);
-
-    if (!key || seen.has(key)) {
-      return false;
-    }
-
-    seen.add(key);
-    return true;
-  });
-}
-
-function getAlternateLink(entry) {
-  return (
-    entry?.link?.find((item) => item?.rel === "alternate")?.href ||
-    entry?.link?.find((item) => item?.type === "text/html")?.href ||
-    ""
-  );
-}
-
-function getEntryId(entry) {
-  const rawId = entry?.id?.$t || "";
-
-  return (
-    rawId.match(/post-(\d+)/i)?.[1] ||
-    rawId.match(/\/posts\/default\/(\d+)/i)?.[1] ||
-    ""
-  );
-}
-
-function getCategories(entry) {
-  return (
-    entry?.category
-      ?.map((item) => item?.term?.trim())
-      .filter(Boolean) || []
-  );
-}
-
-function getThumbnail(entry) {
-  const candidates = [
-    entry?.media$thumbnail?.url,
-    entry?.media$content?.[0]?.url,
-    extractFirstImage(entry?.content?.$t),
-    extractFirstImage(entry?.summary?.$t),
-  ];
-
-  const thumbnail = candidates.find(Boolean);
-
-  return upgradeBloggerImage(thumbnail || "");
-}
-
-function upgradeBloggerImage(value) {
-  const url = normalizeUrl(value);
-
-  if (!url) {
-    return "";
-  }
-
-  return url
-    .replace(/\/s72-c\//i, "/s600/")
-    .replace(/\/s72-c$/i, "/s600")
-    .replace(/\/w72-h72-[^/]+\//i, "/s600/")
-    .replace(/\/w72-h72-[^/]+$/i, "/s600")
-    .replace(/\/s320\//i, "/s600/")
-    .replace(/\/s320$/i, "/s600")
-    .replace(/=w72-h72-[^&]+$/i, "=s600")
-    .replace(/=s320$/i, "=s600");
-}
-
-function extractFirstImage(html = "") {
-  const source = String(html);
-
-  const match =
-    source.match(
-      /<img\b[^>]*(?:data-src|data-original|src)=["']([^"']+)["'][^>]*>/i
-    ) ||
-    source.match(
-      /<(?:meta|link)\b[^>]*(?:content|href)=["']([^"']+\.(?:jpg|jpeg|png|webp)(?:\?[^"']*)?)["'][^>]*>/i
-    );
-
-  return match?.[1] || "";
-}
-
-function cleanTitle(value = "") {
-  return decodeHtml(String(value))
-    .replace(/\u200b/g, "")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-function parseEpisodeCount(title = "") {
-  const match = String(title).match(
-    /\[(\d+)\s*(?:ep|end|episode|episodes)?\]/i
-  );
-
-  return match ? Number.parseInt(match[1], 10) : null;
-}
-
-function mapFeedEntry(entry) {
-  const title = cleanTitle(entry?.title?.$t);
-  const url = makeAbsoluteUrl(getAlternateLink(entry));
-  const categories = getCategories(entry);
-
-  return {
-    id: getEntryId(entry) || url,
-    title,
-    name: title,
-    url,
-    poster: getThumbnail(entry),
-    background: getThumbnail(entry),
-    description: stripHtml(
-      entry?.summary?.$t || entry?.content?.$t || ""
-    ),
-    categories,
-    genres: categories,
-    published: entry?.published?.$t || "",
-    updated: entry?.updated?.$t || "",
-    episodeCount: parseEpisodeCount(title),
-    source: "thekomsan",
-    sourceType: "blogger",
-  };
-}
-
-function clampLimit(value) {
-  const number = Number.parseInt(value, 10);
-
-  if (!Number.isFinite(number) || number <= 0) {
-    return DEFAULT_LIMIT;
-  }
-
-  return Math.min(number, MAX_LIMIT);
-}
-
-function normalizePage(value) {
-  const number = Number.parseInt(value, 10);
-
-  return Number.isFinite(number) && number > 0 ? number : 1;
-}
-
-function createFeedUrl({
-  page = 1,
-  limit = DEFAULT_LIMIT,
-  label = "",
-  query = "",
-  orderBy = "published",
-} = {}) {
-  const safePage = normalizePage(page);
-  const safeLimit = clampLimit(limit);
-  const startIndex = (safePage - 1) * safeLimit + 1;
-
-  let feedUrl = FEED_URL;
-
-  if (label) {
-    feedUrl += `/-/${encodeURIComponent(label)}`;
-  }
-
-  const url = new URL(feedUrl);
-
-  url.searchParams.set("alt", "json");
-  url.searchParams.set("start-index", String(startIndex));
-  url.searchParams.set("max-results", String(safeLimit));
-  url.searchParams.set("orderby", orderBy);
-
-  if (query) {
-    url.searchParams.set("q", query.trim());
-  }
-
-  return url.href;
-}
-
-async function requestJson(url, options = {}) {
-  if (typeof fetchJson === "function") {
-    return fetchJson(url, options);
-  }
-
-  const text = await fetchText(url, options);
-  return JSON.parse(text);
-}
-
-function parseOpenSearchNumber(feed, key) {
-  const value = feed?.[key]?.$t;
-  const number = Number.parseInt(value, 10);
-
-  return Number.isFinite(number) ? number : 0;
-}
-
-/**
- * Load catalog items from the Blogger JSON feed.
- */
-export async function getCatalog({
-  page = 1,
-  limit = DEFAULT_LIMIT,
-  label = "",
-  query = "",
-} = {}) {
-  const safePage = normalizePage(page);
-  const safeLimit = clampLimit(limit);
-
-  const url = createFeedUrl({
-    page: safePage,
-    limit: safeLimit,
-    label,
-    query,
-  });
-
-  const data = await requestJson(url, {
-    headers: {
-      Accept: "application/json,text/plain,*/*",
-      Referer: `${BASE_URL}/`,
-    },
-  });
-
-  const feed = data?.feed || {};
-  const entries = Array.isArray(feed.entry) ? feed.entry : [];
-  const items = entries
-    .map(mapFeedEntry)
-    .filter((item) => item.title && item.url);
-
-  const total = parseOpenSearchNumber(feed, "openSearch$totalResults");
-  const startIndex =
-    parseOpenSearchNumber(feed, "openSearch$startIndex") ||
-    (safePage - 1) * safeLimit + 1;
-
-  const itemsPerPage =
-    parseOpenSearchNumber(feed, "openSearch$itemsPerPage") ||
-    safeLimit;
-
-  const nextStartIndex = startIndex + items.length;
-  const hasMore =
-    items.length >= itemsPerPage &&
-    (total === 0 || nextStartIndex <= total);
-
-  return {
-    items,
-    results: items,
-    page: safePage,
-    limit: safeLimit,
-    total,
-    hasMore,
-    nextPage: hasMore ? safePage + 1 : null,
-    source: "thekomsan",
-  };
-}
-
-/**
- * Alias used by engines that call the site catalog function "getPosts".
- */
-export async function getPosts(options = {}) {
-  return getCatalog(options);
-}
-
-/**
- * Search TheKomsan through the Blogger JSON feed.
- */
-export async function search(query, options = {}) {
-  const keyword = String(query || "").trim();
-
-  if (!keyword) {
-    return {
-      items: [],
-      results: [],
-      page: 1,
-      limit: clampLimit(options.limit),
-      total: 0,
-      hasMore: false,
-      nextPage: null,
-      source: "thekomsan",
-    };
-  }
-
-  return getCatalog({
-    ...options,
-    query: keyword,
-  });
-}
-
-/**
- * Load posts by a Blogger label.
- */
-export async function getByLabel(label, options = {}) {
-  return getCatalog({
-    ...options,
-    label: String(label || "").trim(),
-  });
-}
-
-function getPostIdFromUrl(value) {
-  const url = String(value || "");
-
-  return (
-    url.match(/[?&]postId=(\d+)/i)?.[1] ||
-    url.match(/\/posts\/default\/(\d+)/i)?.[1] ||
-    ""
-  );
-}
-
-function findEntryByUrl(entries, targetUrl) {
-  let normalizedTarget = "";
-
-  try {
-    normalizedTarget = new URL(targetUrl).pathname.replace(/\/+$/, "");
-  } catch {
-    normalizedTarget = String(targetUrl);
-  }
-
-  return entries.find((entry) => {
-    const link = getAlternateLink(entry);
-
-    try {
-      return (
-        new URL(link).pathname.replace(/\/+$/, "") ===
-        normalizedTarget
-      );
-    } catch {
-      return link === targetUrl;
-    }
-  });
-}
-
-async function findPostEntry(seriesUrl) {
-  const postId = getPostIdFromUrl(seriesUrl);
-
-  if (postId) {
-    const url = new URL(`${FEED_URL}/${postId}`);
-    url.searchParams.set("alt", "json");
-
-    const data = await requestJson(url.href, {
-      headers: {
-        Accept: "application/json,text/plain,*/*",
-        Referer: seriesUrl,
-      },
+    .replace(/&gt;/gi, ">")
+    .replace(/&#(\d+);/g, (_, code) => {
+      const value = Number(code);
+      return Number.isFinite(value) ? String.fromCharCode(value) : _;
+    })
+    .replace(/&#x([0-9a-f]+);/gi, (_, code) => {
+      const value = parseInt(code, 16);
+      return Number.isFinite(value) ? String.fromCharCode(value) : _;
     });
-
-    return data?.entry || null;
-  }
-
-  const slug = new URL(seriesUrl).pathname
-    .split("/")
-    .filter(Boolean)
-    .pop()
-    ?.replace(/\.html$/i, "")
-    .replace(/[-_]+/g, " ")
-    .trim();
-
-  if (!slug) {
-    return null;
-  }
-
-  const searchUrl = createFeedUrl({
-    page: 1,
-    limit: 20,
-    query: slug,
-  });
-
-  const data = await requestJson(searchUrl, {
-    headers: {
-      Accept: "application/json,text/plain,*/*",
-      Referer: seriesUrl,
-    },
-  });
-
-  const entries = Array.isArray(data?.feed?.entry)
-    ? data.feed.entry
-    : [];
-
-  return findEntryByUrl(entries, seriesUrl) || entries[0] || null;
 }
 
-function parseJsString(value = "") {
-  return decodeHtml(
-    String(value)
-      .trim()
-      .replace(/^['"]|['"]$/g, "")
-      .replace(/\\(['"\\])/g, "$1")
-      .replace(/\\n/g, " ")
-      .replace(/\\r/g, " ")
-      .replace(/\\t/g, " ")
-      .replace(/\\u0026/gi, "&")
-      .replace(/\\u003d/gi, "=")
-      .replace(/\\u002f/gi, "/")
-      .replace(/\\\//g, "/")
+function normalizeTheKomsanPoster(url) {
+  if (!url) return "";
+
+  let poster = String(url).trim();
+
+  poster = poster
+    .replace(/\/w\d+-h\d+[^/]*\//gi, "/s0/")
+    .replace(/\/s\d+(-c|-rw)?\//gi, "/s0/")
+    .replace(/=w\d+-h\d+[^&]*/gi, "=s0")
+    .replace(/=s\d+(-c|-rw)?/gi, "=s0");
+
+  return normalizePoster(poster);
+}
+
+function normalizeEpisodeTitle(title, index) {
+  let value = cleanTitle(title);
+
+  if (!value) {
+    return `Episode ${index + 1}`;
+  }
+
+  value = value
+    .replace(/^EPISODE\s*/i, "Episode ")
+    .replace(/^EP\s*/i, "Episode ");
+
+  value = value.replace(
+    /^Episode\s*(\d+)\s*(?:E|END)$/i,
+    "Episode $1 End"
+  );
+
+  value = value.replace(
+    /^Episode\s*(\d+)\s*[-–—]\s*(?:E|END)$/i,
+    "Episode $1 End"
+  );
+
+  return value;
+}
+
+function normalizeVideoUrl(url, baseUrl = DEFAULT_BASE_URL) {
+  if (!url) return "";
+
+  let normalized = decodeHtmlEntities(String(url).trim())
+    .replace(/\\\//g, "/")
+    .replace(/\\u0026/gi, "&")
+    .replace(/\\x26/gi, "&");
+
+  if (
+    (normalized.startsWith('"') && normalized.endsWith('"')) ||
+    (normalized.startsWith("'") && normalized.endsWith("'"))
+  ) {
+    normalized = normalized.slice(1, -1).trim();
+  }
+
+  if (normalized.startsWith("//")) {
+    normalized = `https:${normalized}`;
+  } else if (normalized.startsWith("/")) {
+    normalized = absolutizeUrl(normalized, baseUrl);
+  }
+
+  return normalized;
+}
+
+function getYouTubeId(url) {
+  if (!url) return "";
+
+  return (
+    url.match(/youtu\.be\/([^?&/]+)/i)?.[1] ||
+    url.match(/[?&]v=([^&]+)/i)?.[1] ||
+    url.match(/\/embed\/([^?&/]+)/i)?.[1] ||
+    url.match(/\/shorts\/([^?&/]+)/i)?.[1] ||
+    ""
   );
 }
 
-function extractBalancedArray(source, startIndex) {
-  let depth = 0;
-  let quote = "";
-  let escaped = false;
+function getNextPageUrl(base, html) {
+  const $ = cheerio.load(html);
 
-  for (let index = startIndex; index < source.length; index += 1) {
-    const character = source[index];
-
-    if (quote) {
-      if (escaped) {
-        escaped = false;
-      } else if (character === "\\") {
-        escaped = true;
-      } else if (character === quote) {
-        quote = "";
-      }
-
-      continue;
-    }
-
-    if (character === "'" || character === '"' || character === "`") {
-      quote = character;
-      continue;
-    }
-
-    if (character === "[") {
-      depth += 1;
-    } else if (character === "]") {
-      depth -= 1;
-
-      if (depth === 0) {
-        return source.slice(startIndex, index + 1);
-      }
-    }
-  }
-
-  return "";
-}
-
-function extractNamedArray(source, variableName) {
-  const pattern = new RegExp(
-    `(?:var|let|const)?\\s*${variableName}\\s*=\\s*`,
-    "i"
-  );
-
-  const match = pattern.exec(source);
-
-  if (!match) {
-    return "";
-  }
-
-  const arrayStart = source.indexOf("[", match.index + match[0].length);
-
-  if (arrayStart === -1) {
-    return "";
-  }
-
-  return extractBalancedArray(source, arrayStart);
-}
-
-function parseObjectProperty(objectText, propertyNames) {
-  for (const property of propertyNames) {
-    const patterns = [
-      new RegExp(
-        `(?:^|[,\\s{])["']?${property}["']?\\s*:\\s*["']([^"']+)["']`,
-        "i"
-      ),
-      new RegExp(
-        `(?:^|[,\\s{])["']?${property}["']?\\s*:\\s*\`([^\`]+)\``,
-        "i"
-      ),
-    ];
-
-    for (const pattern of patterns) {
-      const match = objectText.match(pattern);
-
-      if (match?.[1]) {
-        return parseJsString(match[1]);
-      }
-    }
-  }
-
-  return "";
-}
-
-function splitTopLevelObjects(arrayText) {
-  const body = arrayText.trim().replace(/^\[/, "").replace(/\]$/, "");
-  const objects = [];
-
-  let start = -1;
-  let depth = 0;
-  let quote = "";
-  let escaped = false;
-
-  for (let index = 0; index < body.length; index += 1) {
-    const character = body[index];
-
-    if (quote) {
-      if (escaped) {
-        escaped = false;
-      } else if (character === "\\") {
-        escaped = true;
-      } else if (character === quote) {
-        quote = "";
-      }
-
-      continue;
-    }
-
-    if (character === "'" || character === '"' || character === "`") {
-      quote = character;
-      continue;
-    }
-
-    if (character === "{") {
-      if (depth === 0) {
-        start = index;
-      }
-
-      depth += 1;
-    } else if (character === "}") {
-      depth -= 1;
-
-      if (depth === 0 && start !== -1) {
-        objects.push(body.slice(start, index + 1));
-        start = -1;
-      }
-    }
-  }
-
-  return objects;
-}
-
-function parseListVideoIframe(source, pageUrl) {
-  const arrayText =
-    extractNamedArray(source, "list_vdoiframe") ||
-    extractNamedArray(source, "listVdoIframe") ||
-    extractNamedArray(source, "playlist") ||
+  const older =
+    $("a.blog-pager-older-link").attr("href") ||
+    $("#Blog1_blog-pager-older-link").attr("href") ||
+    $(".blog-pager-older-link").attr("href") ||
+    $('a[rel="next"]').attr("href") ||
     "";
 
-  if (!arrayText) {
-    return [];
+  if (older) {
+    return absolutizeUrl(older, base);
   }
 
-  const objectEntries = splitTopLevelObjects(arrayText);
+  const articles = $(
+    "article.blog-post, article.hentry, .blog-posts article"
+  ).toArray();
 
-  return objectEntries
-    .map((objectText, index) => {
-      const title =
-        parseObjectProperty(objectText, [
-          "title",
-          "name",
-          "label",
-          "episode",
-        ]) || `Episode ${index + 1}`;
+  if (!articles.length) return null;
 
-      const file = parseObjectProperty(objectText, [
-        "file",
-        "url",
-        "src",
-        "link",
-      ]);
+  const last = $(articles[articles.length - 1]);
 
-      const image = parseObjectProperty(objectText, [
-        "image",
-        "poster",
-        "thumbnail",
-      ]);
+  const published =
+    last.find('meta[itemprop="datePublished"]').attr("content") ||
+    last.find("time[datetime]").attr("datetime") ||
+    last.find(".published").attr("datetime") ||
+    "";
 
-      return {
-        title: cleanTitle(title),
-        url: normalizeUrl(file, pageUrl),
-        poster: upgradeBloggerImage(
-          normalizeUrl(image, pageUrl)
-        ),
-      };
-    })
-    .filter((item) => item.url);
+  if (!published) return null;
+
+  return `${base}/search?updated-max=${encodeURIComponent(
+    published
+  )}&max-results=12`;
 }
 
-function getAttribute(tag, attribute) {
-  const pattern = new RegExp(
-    `\\b${attribute}\\s*=\\s*(?:"([^"]*)"|'([^']*)'|([^\\s>]+))`,
-    "i"
-  );
+/* =========================
+   VIDEO ARRAY PARSER
+========================= */
+function extractBalancedArray(source, startIndex) {
+  const openIndex = source.indexOf("[", startIndex);
+  if (openIndex < 0) return "";
 
-  const match = tag.match(pattern);
+  let depth = 0;
+  let quote = "";
+  let escaped = false;
 
-  return decodeHtml(match?.[1] || match?.[2] || match?.[3] || "");
-}
+  for (let i = openIndex; i < source.length; i += 1) {
+    const char = source[i];
 
-function extractIframeEpisodes(source, pageUrl) {
-  const episodes = [];
-  const iframePattern = /<iframe\b[^>]*>/gi;
+    if (quote) {
+      if (escaped) {
+        escaped = false;
+        continue;
+      }
 
-  let match;
+      if (char === "\\") {
+        escaped = true;
+        continue;
+      }
 
-  while ((match = iframePattern.exec(source))) {
-    const iframe = match[0];
-    const src =
-      getAttribute(iframe, "data-src") ||
-      getAttribute(iframe, "src");
+      if (char === quote) {
+        quote = "";
+      }
 
-    if (!src || src === "about:blank") {
       continue;
     }
 
-    const title =
-      getAttribute(iframe, "title") ||
-      getAttribute(iframe, "name") ||
-      `Episode ${episodes.length + 1}`;
-
-    episodes.push({
-      title: cleanTitle(title),
-      url: normalizeUrl(src, pageUrl),
-      poster: "",
-    });
-  }
-
-  return episodes;
-}
-
-function extractVideoEpisodes(source, pageUrl) {
-  const episodes = [];
-  const videoPattern = /<(?:video|source)\b[^>]*>/gi;
-
-  let match;
-
-  while ((match = videoPattern.exec(source))) {
-    const tag = match[0];
-    const src =
-      getAttribute(tag, "data-src") ||
-      getAttribute(tag, "src");
-
-    if (!src) {
+    if (char === '"' || char === "'" || char === "`") {
+      quote = char;
       continue;
     }
 
-    episodes.push({
-      title: `Episode ${episodes.length + 1}`,
-      url: normalizeUrl(src, pageUrl),
-      poster: upgradeBloggerImage(
-        normalizeUrl(getAttribute(tag, "poster"), pageUrl)
-      ),
-    });
-  }
+    if (char === "[") {
+      depth += 1;
+    } else if (char === "]") {
+      depth -= 1;
 
-  return episodes;
-}
-
-function extractAnchorEpisodes(source, pageUrl) {
-  const episodes = [];
-  const anchorPattern = /<a\b[^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
-
-  let match;
-
-  while ((match = anchorPattern.exec(source))) {
-    const url = normalizeUrl(match[1], pageUrl);
-    const title = stripHtml(match[2]);
-
-    if (
-      !url ||
-      (!VIDEO_EXTENSIONS.test(url) && !EMBED_HOSTS.test(url))
-    ) {
-      continue;
+      if (depth === 0) {
+        return source.slice(openIndex, i + 1);
+      }
     }
-
-    episodes.push({
-      title: title || `Episode ${episodes.length + 1}`,
-      url,
-      poster: "",
-    });
   }
 
-  return episodes;
+  return "";
 }
 
-function extractRawVideoUrls(source, pageUrl) {
-  const results = [];
-  const urlPattern =
-    /https?:\\?\/\\?\/[^\s"'<>\\]+|\/\/[^\s"'<>\\]+/gi;
-
-  const matches = String(source).match(urlPattern) || [];
-
-  for (const rawValue of matches) {
-    const url = normalizeUrl(rawValue, pageUrl);
-
-    if (
-      !url ||
-      (!VIDEO_EXTENSIONS.test(url) && !EMBED_HOSTS.test(url))
-    ) {
-      continue;
-    }
-
-    results.push({
-      title: `Episode ${results.length + 1}`,
-      url,
-      poster: "",
-    });
-  }
-
-  return results;
-}
-
-function extractEpisodeNumber(value = "") {
+function findVideosArraySource(html) {
   const patterns = [
-    /\b(?:episode|ep)\s*[-_.:]?\s*(\d+)\b/i,
-    /\bpart\s*[-_.:]?\s*(\d+)\b/i,
-    /\b(\d+)\s*(?:episode|ep)\b/i,
-    /(?:^|\D)(\d{1,4})(?:\D|$)/,
+    /(?:const|let|var)\s+videos\s*=/gi,
+    /window\.videos\s*=/gi,
+    /options\.player_list\s*=/gi,
+    /(?:const|let|var)\s+list_vdoiframe\s*=/gi,
+    /window\.list_vdoiframe\s*=/gi
   ];
 
   for (const pattern of patterns) {
-    const match = String(value).match(pattern);
+    pattern.lastIndex = 0;
 
-    if (match) {
-      return Number.parseInt(match[1], 10);
+    let match;
+    while ((match = pattern.exec(html)) !== null) {
+      const arraySource = extractBalancedArray(
+        html,
+        match.index + match[0].length
+      );
+
+      if (arraySource) {
+        return arraySource;
+      }
     }
   }
 
-  return null;
+  return "";
 }
 
-function normalizeEpisodeTitles(episodes) {
-  return episodes.map((episode, index) => {
-    const number =
-      extractEpisodeNumber(episode.title) ||
-      extractEpisodeNumber(episode.url);
+function parseJavaScriptArray(raw) {
+  if (!raw) return [];
+
+  const cleaned = raw
+    .replace(/^\uFEFF/, "")
+    .replace(/<!--/g, "")
+    .replace(/-->/g, "")
+    .trim();
+
+  try {
+    const parsed = JSON.parse(cleaned);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    // Blogger arrays normally use valid JavaScript object syntax,
+    // but may not be strict JSON.
+  }
+
+  try {
+    const parsed = Function(
+      `"use strict"; return (${cleaned});`
+    )();
+
+    return Array.isArray(parsed) ? parsed : [];
+  } catch (err) {
+    console.log(
+      "[thekomsan] parseJavaScriptArray failed:",
+      err.message
+    );
+
+    return [];
+  }
+}
+
+function parseVideosArray(html, baseUrl = DEFAULT_BASE_URL) {
+  try {
+    const raw = findVideosArraySource(html);
+    if (!raw) return [];
+
+    const parsed = parseJavaScriptArray(raw);
+    if (!parsed.length) return [];
+
+    return parsed
+      .map((item, index) => {
+        if (!item) return null;
+
+        if (typeof item === "string") {
+          const file = normalizeVideoUrl(item, baseUrl);
+
+          if (!file) return null;
+
+          return {
+            title: `Episode ${index + 1}`,
+            file
+          };
+        }
+
+        const file = normalizeVideoUrl(
+          item.file ||
+            item.url ||
+            item.src ||
+            item.link ||
+            item.video ||
+            item.embed ||
+            "",
+          baseUrl
+        );
+
+        if (!file) return null;
+
+        return {
+          title: normalizeEpisodeTitle(
+            item.title ||
+              item.name ||
+              item.label ||
+              item.episode ||
+              "",
+            index
+          ),
+          file
+        };
+      })
+      .filter(Boolean);
+  } catch (err) {
+    console.log(
+      "[thekomsan] parseVideosArray failed:",
+      err.message
+    );
+
+    return [];
+  }
+}
+
+/* =========================
+   FALLBACK VIDEO PARSER
+========================= */
+function parseFallbackVideos(html, baseUrl) {
+  const $ = cheerio.load(html);
+  const results = [];
+
+  $("iframe[src]").each((index, element) => {
+    const src = normalizeVideoUrl($(element).attr("src"), baseUrl);
+    if (!src) return;
+
+    results.push({
+      title: `Episode ${index + 1}`,
+      file: src
+    });
+  });
+
+  $("video source[src], video[src]").each((index, element) => {
+    const src = normalizeVideoUrl($(element).attr("src"), baseUrl);
+    if (!src) return;
+
+    results.push({
+      title: `Episode ${results.length + 1}`,
+      file: src
+    });
+  });
+
+  return results.filter(
+    (item, index, array) =>
+      array.findIndex((entry) => entry.file === item.file) === index
+  );
+}
+
+/* =========================
+   PAGE DETAIL
+========================= */
+async function getPageDetail(url) {
+  try {
+    const { data } = await axiosClient.get(url, {
+      headers: {
+        ...PAGE_HEADERS,
+        Referer: url
+      }
+    });
+
+    const html = String(data || "");
+    const $ = cheerio.load(html);
+
+    const title =
+      cleanTitle($("h1.entry-title").first().text()) ||
+      cleanTitle(
+        $('meta[property="og:title"]').first().attr("content")
+      ) ||
+      cleanTitle(
+        $('meta[name="twitter:title"]').first().attr("content")
+      ) ||
+      cleanTitle($("title").first().text());
+
+    let thumbnail =
+      $('meta[property="og:image"]').first().attr("content") ||
+      $('meta[name="twitter:image"]').first().attr("content") ||
+      $("#my-poster img").first().attr("src") ||
+      $("#my-poster img").first().attr("data-src") ||
+      $("#postBody img").first().attr("src") ||
+      $("meta[itemprop='image']").first().attr("content") ||
+      "";
+
+    thumbnail = normalizeTheKomsanPoster(
+      absolutizeUrl(thumbnail, url)
+    );
+
+    let videos = parseVideosArray(html, url);
+
+    if (!videos.length) {
+      videos = parseFallbackVideos(html, url);
+    }
+
+    if (!videos.length) return null;
 
     return {
-      ...episode,
-      id: `${number || index + 1}`,
-      number: number || index + 1,
-      title:
-        episode.title &&
-        !/^episode\s+\d+$/i.test(episode.title)
-          ? episode.title
-          : `Episode ${number || index + 1}`,
-      name:
-        episode.title &&
-        !/^episode\s+\d+$/i.test(episode.title)
-          ? episode.title
-          : `Episode ${number || index + 1}`,
-      source: "thekomsan",
+      title,
+      thumbnail,
+      videos
     };
-  });
+  } catch (err) {
+    console.log(
+      "[thekomsan] getPageDetail failed:",
+      err.message
+    );
+
+    return null;
+  }
 }
 
-function parseEpisodes(source, pageUrl) {
-  const episodes = [
-    ...parseListVideoIframe(source, pageUrl),
-    ...extractIframeEpisodes(source, pageUrl),
-    ...extractVideoEpisodes(source, pageUrl),
-    ...extractAnchorEpisodes(source, pageUrl),
-    ...extractRawVideoUrls(source, pageUrl),
-  ];
+/* =========================
+   CATALOG PARSERS
+========================= */
+function parseCatalogPost($, element, pageUrl, prefix) {
+  const $el = $(element);
 
-  const uniqueEpisodes = removeDuplicateItems(
-    episodes.filter((item) => item.url),
-    (item) => item.url
+  const linkEl =
+    $el.find("h2.entry-title a[href]").first().length
+      ? $el.find("h2.entry-title a[href]").first()
+      : $el.find("a.post-filter-inner[href]").first().length
+        ? $el.find("a.post-filter-inner[href]").first()
+        : $el.find("a.post-filter-link[href]").first().length
+          ? $el.find("a.post-filter-link[href]").first()
+          : $el.find("a[href]").first();
+
+  const title =
+    cleanTitle(linkEl.attr("title")) ||
+    cleanTitle($el.find("h2.entry-title").first().text()) ||
+    cleanTitle($el.find(".entry-title").first().text()) ||
+    cleanTitle(linkEl.text());
+
+  const link = absolutizeUrl(linkEl.attr("href") || "", pageUrl);
+
+  if (!title || !link) return null;
+
+  const imgEl = $el.find("img.snip-thumbnail, img").first();
+
+  let poster =
+    imgEl.attr("data-src") ||
+    imgEl.attr("data-original") ||
+    imgEl.attr("data-lazy-src") ||
+    imgEl.attr("src") ||
+    linkEl.find("img").attr("data-src") ||
+    linkEl.find("img").attr("src") ||
+    "";
+
+  poster = normalizeTheKomsanPoster(
+    absolutizeUrl(poster, pageUrl)
   );
 
-  return normalizeEpisodeTitles(uniqueEpisodes);
-}
-
-/**
- * Load a single Blogger post and extract its episode playlist.
- */
-export async function getSeries(seriesUrl) {
-  const url = makeAbsoluteUrl(seriesUrl);
-
-  if (!url) {
-    throw new Error("[thekomsan] Missing series URL");
-  }
-
-  let entry = null;
-
-  try {
-    entry = await findPostEntry(url);
-  } catch (error) {
-    console.log(
-      "[thekomsan] Blogger entry lookup failed:",
-      error?.response?.status || error?.message
-    );
-  }
-
-  let html = "";
-  let content = entry?.content?.$t || "";
-
-  try {
-    html = await fetchText(url, {
-      headers: {
-        Accept: "text/html,application/xhtml+xml",
-        Referer: `${BASE_URL}/`,
-      },
-    });
-  } catch (error) {
-    console.log(
-      "[thekomsan] page fetch failed:",
-      error?.response?.status || error?.message
-    );
-  }
-
-  const combinedSource = `${content}\n${html}`;
-  const episodes = parseEpisodes(combinedSource, url);
-
-  const mappedEntry = entry
-    ? mapFeedEntry(entry)
-    : {
-        id: url,
-        title: cleanTitle(
-          html.match(
-            /<h1\b[^>]*class=["'][^"']*entry-title[^"']*["'][^>]*>([\s\S]*?)<\/h1>/i
-          )?.[1] ||
-            html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1] ||
-            ""
-        ),
-        name: "",
-        url,
-        poster: upgradeBloggerImage(extractFirstImage(html)),
-        background: "",
-        description: "",
-        categories: [],
-        genres: [],
-        published: "",
-        updated: "",
-        episodeCount: null,
-        source: "thekomsan",
-        sourceType: "blogger",
-      };
-
-  mappedEntry.name = mappedEntry.name || mappedEntry.title;
-  mappedEntry.background =
-    mappedEntry.background || mappedEntry.poster;
-
   return {
-    ...mappedEntry,
-    url,
-    episodes,
-    videos: episodes,
+    id: `${prefix}:${encodeURIComponent(link)}`,
+    name: title,
+    poster
   };
 }
 
-/**
- * Alias used by engines that request episodes directly.
- */
-export async function getEpisodes(seriesUrl) {
-  const series = await getSeries(seriesUrl);
-  return series.episodes;
-}
+/* =========================
+   CATALOG
+========================= */
+async function getCatalogItems(prefix, siteConfig, url) {
+  try {
+    const pageUrl =
+      url ||
+      siteConfig?.catalogUrl ||
+      siteConfig?.baseUrl ||
+      DEFAULT_BASE_URL;
 
-/**
- * Load one episode by its index or episode number.
- */
-export async function getEpisode(seriesUrl, episodeValue) {
-  const episodes = await getEpisodes(seriesUrl);
-  const requested = Number.parseInt(episodeValue, 10);
+    const { data } = await axiosClient.get(pageUrl, {
+      headers: {
+        ...PAGE_HEADERS,
+        Referer:
+          siteConfig?.baseUrl ||
+          DEFAULT_BASE_URL
+      }
+    });
 
-  if (!Number.isFinite(requested)) {
-    return episodes[0] || null;
+    const $ = cheerio.load(data);
+
+    let posts = $(
+      "div.blog-posts div.grid-posts article.blog-post"
+    ).toArray();
+
+    if (!posts.length) {
+      posts = $(
+        ".blog-posts article.blog-post, .blog-posts article.hentry"
+      ).toArray();
+    }
+
+    if (!posts.length) {
+      posts = $(
+        "article.blog-post, article.hentry, .post-filter"
+      ).toArray();
+    }
+
+    const results = posts
+      .map((post) =>
+        parseCatalogPost($, post, pageUrl, prefix)
+      )
+      .filter(Boolean);
+
+    return uniqById(results);
+  } catch (err) {
+    console.log(
+      "[thekomsan] getCatalogItems failed:",
+      err.message
+    );
+
+    return [];
   }
-
-  return (
-    episodes.find(
-      (episode) =>
-        episode.number === requested ||
-        Number.parseInt(episode.id, 10) === requested
-    ) ||
-    episodes[requested] ||
-    episodes[requested - 1] ||
-    null
-  );
 }
 
-export const thekomsan = {
-  id: "thekomsan",
-  name: "TheKomsan",
-  prefix: "thekomsan",
-  baseUrl: BASE_URL,
-  blogId: BLOG_ID,
-  feedUrl: FEED_URL,
-  sourceType: "blogger",
+/* =========================
+   EPISODES
+========================= */
+async function getEpisodes(prefix, seriesUrl) {
+  try {
+    const detail = await getPageDetail(seriesUrl);
+    if (!detail?.videos?.length) return [];
 
-  getCatalog,
-  getPosts,
-  getByLabel,
-  search,
-  getSeries,
+    return detail.videos.map((video, index) => {
+      const episodeNumber = index + 1;
+
+      return {
+        id: `${prefix}:${encodeURIComponent(
+          seriesUrl
+        )}:1:${episodeNumber}`,
+        title:
+          video.title ||
+          `Episode ${String(episodeNumber).padStart(2, "0")}`,
+        seriesTitle: detail.title,
+        season: 1,
+        episode: episodeNumber,
+        thumbnail: detail.thumbnail || "",
+        released: new Date().toISOString()
+      };
+    });
+  } catch (err) {
+    console.log(
+      "[thekomsan] getEpisodes failed:",
+      err.message
+    );
+
+    return [];
+  }
+}
+
+/* =========================
+   STREAM
+========================= */
+async function getStream(prefix, seriesUrl, episode) {
+  try {
+    const episodeNumber = Number(episode);
+
+    if (
+      !Number.isInteger(episodeNumber) ||
+      episodeNumber < 1
+    ) {
+      return null;
+    }
+
+    const detail = await getPageDetail(seriesUrl);
+    if (!detail?.videos?.length) return null;
+
+    const video = detail.videos[episodeNumber - 1];
+    if (!video?.file) return null;
+
+    let url = normalizeVideoUrl(video.file, seriesUrl);
+    if (!url) return null;
+
+    const streamTitle =
+      video.title || `Episode ${episodeNumber}`;
+
+    if (/youtu\.be|youtube\.com/i.test(url)) {
+      const ytId = getYouTubeId(url);
+      if (!ytId) return null;
+
+      return {
+        ytId,
+        name: SITE_NAME,
+        title: `${streamTitle} (YouTube)`,
+        behaviorHints: {
+          group: STREAM_GROUP
+        }
+      };
+    }
+
+    if (/player\.php/i.test(url)) {
+      const resolved = await resolvePlayerUrl(url);
+
+      if (!resolved) return null;
+
+      url = normalizeVideoUrl(resolved, seriesUrl);
+    }
+
+    if (/ok\.ru\/videoembed\//i.test(url)) {
+      const cleaned = url
+        .replace(/([?&])autoplay=1(?=&|$)/gi, "$1")
+        .replace(/[?&]$/, "")
+        .replace(/\?&/, "?");
+
+      const resolved = await resolveOkEmbed(cleaned);
+
+      url = normalizeVideoUrl(
+        resolved || cleaned,
+        seriesUrl
+      );
+    }
+
+    return buildStream(
+      url,
+      episodeNumber,
+      streamTitle,
+      SITE_NAME,
+      STREAM_GROUP,
+      seriesUrl
+    );
+  } catch (err) {
+    console.log(
+      "[thekomsan] getStream failed:",
+      err.message
+    );
+
+    return null;
+  }
+}
+
+module.exports = {
+  getCatalogItems,
   getEpisodes,
-  getEpisode,
+  getStream,
+  getNextPageUrl
 };
-
-export default thekomsan;
