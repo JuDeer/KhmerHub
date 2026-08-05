@@ -180,21 +180,31 @@ module.exports = (builder, deps) => {
               entry?.summary?.$t ||
               "";
 
-            const entryId = String(entry?.id?.$t || "");
+            const $post = cheerio.load(postHtml);
 
-            const idMatch = entryId.match(
-              /blog-(\d+)\.post-(\d+)$/i
-            );
-
-            const blogId = idMatch?.[1] || "";
-            const postId = idMatch?.[2] || "";
+            const playerPostId =
+              $post("#fanta[data-post-id]").first().attr("data-post-id") ||
+              "";
 
             const poster =
               entry?.media$thumbnail?.url ||
-              postHtml.match(/<img[^>]+(?:data-src|src)=["']([^"']+)/i)?.[1] ||
+              postHtml.match(
+                /<img[^>]+(?:data-src|src)=["']([^"']+)/i
+              )?.[1] ||
               "";
 
-            if (!title || !link) return null;	  
+            if (!title || !link) return null;
+
+            if (playerPostId) {
+              URL_TO_POSTID.set(link, playerPostId);
+
+              POST_INFO.set(playerPostId, {
+                ...(POST_INFO.get(playerPostId) || {}),
+                sourceType: "blogger",
+                cleanTitle: title,
+                pageHtml: postHtml
+              });
+            }
 
             const normalizedPoster = normalizePoster(poster);
 
