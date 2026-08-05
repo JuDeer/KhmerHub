@@ -103,7 +103,30 @@ async function getEpisodes(prefix, seriesUrl) {
     return [];
   }
 
-  const detail = await getStreamDetail(postId, seriesUrl);
+  let detail = null;
+
+  if (prefix === "sunday") {
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      try {
+        detail = await getStreamDetail(postId, seriesUrl);
+
+        if (detail?.urls?.length) break;
+      } catch (err) {
+        console.log(
+          `[sunday] getStreamDetail attempt ${attempt} failed:`,
+          err?.response?.status || err?.message
+        );
+      }
+
+      if (attempt < 3) {
+        await new Promise(resolve =>
+          setTimeout(resolve, attempt * 1000)
+        );
+      }
+    }
+  } else {
+    detail = await getStreamDetail(postId, seriesUrl);
+  }
 
   if (!detail) {
     return [];
