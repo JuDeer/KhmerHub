@@ -13,7 +13,7 @@ const sites = [
   { id: "merlkon", name: "Merlkon", type: "series", enabled: true },
   { id: "idrama", name: "iDramaHD", type: "series", enabled: true }, 
   { id: "cat3movie", name: "Cat3Movie", type: "movie", enabled: true },
-  { id: "xvideos", name: "xvideos", type: "movie", enabled: true }  
+  { id: "xvideos", name: "xvideos", type: "movie", enabled: true }
 ];
 
 module.exports = {
