@@ -50,6 +50,13 @@ module.exports = (builder, deps) => {
         },
       };
     } catch (err) {
+      console.error("[meta] failed:", {
+        id,
+        message: err?.message,
+        status: err?.response?.status,
+        url: err?.config?.url
+      });
+
       return { meta: null };
     }
   });
