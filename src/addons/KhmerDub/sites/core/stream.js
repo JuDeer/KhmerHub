@@ -111,10 +111,11 @@ async function getStreamDetail(postId, seriesUrl = "") {
     detail = await fetchVipWordpressDetail(seriesUrl, postId);
   } else {
     const results = await Promise.all(
-      blogIds.map((blogId) =>
+      Object.values(BLOG_IDS).map((blogId) =>
         fetchFromBlog(blogId, postId)
       )
     );
+    
     const validResults = results.filter(
       (item) => item && Array.isArray(item.urls) && item.urls.length
     );
