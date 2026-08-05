@@ -123,7 +123,7 @@ module.exports = (builder, deps) => {
         if (!startUrl) return { metas: [] };
 
         const WEBSITE_PAGE_SIZE = 30;
-        const PAGES_PER_BATCH = 3;
+        const PAGES_PER_BATCH = 1;
 
         const skip = Number(extra?.skip || 0);
         const targetPage = Math.floor(skip / WEBSITE_PAGE_SIZE) + 1;
@@ -204,7 +204,7 @@ module.exports = (builder, deps) => {
           : `${base}/?max-results=20`;
 
         const WEBSITE_PAGE_SIZE = 20;
-        const PAGES_PER_BATCH = 3;
+        const PAGES_PER_BATCH = 1;
 
         const skip = Number(extra?.skip || 0);
         const targetPage = Math.floor(skip / WEBSITE_PAGE_SIZE) + 1;
