@@ -61,7 +61,7 @@ const deps = {
   cheerio,
   normalizePoster,
   mapMetas,
-  uniqById
+  uniqById,
   URL_TO_POSTID,
   POST_INFO
 };
