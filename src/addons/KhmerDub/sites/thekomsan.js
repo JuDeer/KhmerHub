@@ -518,8 +518,13 @@ async function getCatalogItems(prefix, siteConfig, url) {
 function getNextPageUrl(base, html) {
   try {
     const $ = cheerio.load(html);
+    const pageBase = base || BASE_URL;
 
-    const nextUrl =
+    let nextUrl =
+      $("#load-more-link").attr("data-load") ||
+      $("a.blog-pager-older-link.load-more").attr("data-load") ||
+      $("a.blog-pager-older-link").attr("data-load") ||
+      $(".blog-pager-older-link").attr("data-load") ||
       $("#Blog1_blog-pager-older-link").attr("href") ||
       $("a.blog-pager-older-link").attr("href") ||
       $(".blog-pager-older-link").attr("href") ||
@@ -527,8 +532,17 @@ function getNextPageUrl(base, html) {
       $('a[rel="next"]').attr("href") ||
       "";
 
-    if (nextUrl) {
-      return absolutizeUrl(nextUrl, base || BASE_URL);
+    nextUrl = String(nextUrl)
+      .replace(/&amp;/gi, "&")
+      .replace(/&#38;/gi, "&")
+      .trim();
+
+    if (
+      nextUrl &&
+      nextUrl !== "#" &&
+      !/^javascript:/i.test(nextUrl)
+    ) {
+      return absolutizeUrl(nextUrl, pageBase);
     }
 
     const posts = findCatalogPosts($);
@@ -544,7 +558,7 @@ function getNextPageUrl(base, html) {
 
     if (!published) return null;
 
-    const searchBase = absolutizeUrl("/search", base || BASE_URL);
+    const searchBase = absolutizeUrl("/search", pageBase);
     const next = new URL(searchBase);
 
     next.searchParams.set("updated-max", published);
