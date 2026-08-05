@@ -208,8 +208,8 @@ module.exports = (builder, deps) => {
         const base = String(site.baseUrl || "").replace(/\/$/, "");
 
         const startUrl = extra?.search
-          ? `${base}/search?q=${encodeURIComponent(extra.search)}&max-results=20`
-          : `${base}/?max-results=20`;
+          ? `${base}/feeds/posts/default?q=${encodeURIComponent(extra.search)}&alt=json&max-results=20`
+          : `${base}/feeds/posts/default?alt=json&max-results=20`;
 
         const WEBSITE_PAGE_SIZE = 20;
         const PAGES_PER_BATCH = 1;
