@@ -6,7 +6,9 @@ module.exports = (builder, deps) => {
     cheerio,
     normalizePoster,
     mapMetas,
-    uniqById
+    uniqById,
+    URL_TO_POSTID,
+    POST_INFO
   } = deps;
 
   /* =========================
@@ -178,12 +180,28 @@ module.exports = (builder, deps) => {
               entry?.summary?.$t ||
               "";
 
+            const postId =
+              String(entry?.id?.$t || "").match(/post-(\d+)$/)?.[1] ||
+              String(entry?.id?.$t || "").match(/posts\/default\/(\d+)/)?.[1] ||
+              "";
+
             const poster =
               entry?.media$thumbnail?.url ||
               postHtml.match(/<img[^>]+(?:data-src|src)=["']([^"']+)/i)?.[1] ||
               "";
 
             if (!title || !link) return null;
+
+            if (postId) {
+              URL_TO_POSTID.set(link, postId);
+
+              POST_INFO.set(postId, {
+                ...(POST_INFO.get(postId) || {}),
+                sourceType: "blogger",
+                cleanTitle: title,
+                pageHtml: postHtml
+              });
+            }			  
 
             const normalizedPoster = normalizePoster(poster);
 
