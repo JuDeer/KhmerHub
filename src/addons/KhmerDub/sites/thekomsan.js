@@ -552,13 +552,13 @@ function getNextPageUrl(base, html) {
 
     let nextUrl =
       $("#load-more-link").attr("data-load") ||
-      $("#blog-pager a.load-more").attr("data-load") ||
-      $("a.blog-pager-older-link").attr("data-load") ||
-      $("#Blog1_blog-pager-older-link").attr("href") ||
-      $("a.blog-pager-older-link").attr("href") ||
+      $("#blog-pager a[data-load]").first().attr("data-load") ||
+      $("a.blog-pager-older-link[data-load]").first().attr("data-load") ||
       "";
 
-    if (!nextUrl) return null;
+    if (!nextUrl) {
+      return null;
+    }
 
     nextUrl = String(nextUrl)
       .replace(/&amp;/gi, "&")
@@ -573,9 +573,13 @@ function getNextPageUrl(base, html) {
       return null;
     }
 
-    return new URL(nextUrl, base || BASE_URL).toString();
+    return absolutizeUrl(nextUrl, base || BASE_URL);
   } catch (err) {
-    console.log(`[${SITE_ID}] getNextPageUrl failed:`, err.message);
+    console.log(
+      `[${SITE_ID}] getNextPageUrl failed:`,
+      err.message
+    );
+
     return null;
   }
 }
