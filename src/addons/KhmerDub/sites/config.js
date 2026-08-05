@@ -47,14 +47,15 @@ module.exports = {
   },	
   
   thekomsan: {
+    ...albumSite,
     pageSize: 20,
     baseUrl: "https://www.thekomsan.com",
     genreUrls: {
-      OnAir: "https://www.thekomsan.com/search/label/On%20Air?&max-results=20",
-      Chinese: "https://www.thekomsan.com/search/label/Chinese?&max-results=20",
-      Korean: "https://www.thekomsan.com/search/label/Korean?&max-results=20"
+	  OnAir: "https://www.thekomsan.com/search/label/On%20Air?max-results=20",
+	  Chinese: "https://www.thekomsan.com/search/label/Chinese?max-results=20",
+	  Korean: "https://www.thekomsan.com/search/label/Korean?max-results=20"
     }
-  },  
+  }, 
 
   khmerave: {
     ...albumSite,
