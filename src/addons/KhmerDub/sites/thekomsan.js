@@ -73,23 +73,35 @@ function normalizeTheKomsanPoster(url) {
   }
 
   poster = poster
-    // Blogger path image sizing.
     .replace(/\/w\d+-h\d+[^/]*\//gi, "/s0/")
-    .replace(/\/s\d+(-c|-rw)?\//gi, "/s0/")
-    .replace(/\/s\d+-r[w|h]\//gi, "/s0/")
-
-    // Blogger query/equal image sizing.
+    .replace(/\/s\d+(?:-c|-rw)?\//gi, "/s0/")
     .replace(/=w\d+-h\d+[^&"']*/gi, "=s0")
-    .replace(/=s\d+(-c|-rw)?/gi, "=s0");
+    .replace(/=s\d+(?:-c|-rw)?/gi, "=s0");
 
   return normalizePoster(poster);
 }
 
+function normalizeVideoUrl(url, baseUrl = BASE_URL) {
+  if (!url) return "";
+
+  let value = decodeHtmlEntities(String(url).trim())
+    .replace(/\\\//g, "/")
+    .replace(/^['"]|['"]$/g, "");
+
+  if (value.startsWith("//")) {
+    value = `https:${value}`;
+  } else if (value.startsWith("/")) {
+    value = absolutizeUrl(value, baseUrl);
+  }
+
+  return value;
+}
+
 function normalizeEpisodeTitle(title, index) {
   const fallback = `Episode ${index + 1}`;
-  if (!title) return fallback;
-
   const value = cleanTitle(title);
+
+  if (!value) return fallback;
 
   const match = value.match(
     /^(?:EPISODE|EP)[.\s_-]*(\d+)\s*(E|END)?$/i
@@ -101,98 +113,6 @@ function normalizeEpisodeTitle(title, index) {
   const isEnd = Boolean(match[2]);
 
   return `Episode ${episodeNumber}${isEnd ? " End" : ""}`;
-}
-
-function parseVideosArray(html, baseUrl = BASE_URL) {
-  try {
-    if (!html) return [];
-
-    const patterns = [
-      /(?:const|let|var)\s+videos\s*=\s*(\[[\s\S]*?\])\s*;/i,
-      /window\.videos\s*=\s*(\[[\s\S]*?\])\s*;/i,
-      /options\.player_list\s*=\s*(\[[\s\S]*?\])\s*;/i
-    ];
-
-    let raw = "";
-
-    for (const pattern of patterns) {
-      const match = html.match(pattern);
-
-      if (match?.[1]) {
-        raw = match[1];
-        break;
-      }
-    }
-
-    if (!raw) {
-      console.log(`[${SITE_ID}] videos array not found`);
-      return [];
-    }
-
-    // TheKomsan arrays are usually valid JSON except for trailing commas.
-    raw = raw
-      .replace(/,\s*]/g, "]")
-      .replace(/,\s*}/g, "}");
-
-    let parsed;
-
-    try {
-      parsed = JSON.parse(raw);
-    } catch {
-      // Fallback for JavaScript object syntax using unquoted keys/single quotes.
-      const normalized = raw
-        .replace(/([{,]\s*)([A-Za-z_$][\w$]*)\s*:/g, '$1"$2":')
-        .replace(/'/g, '"')
-        .replace(/,\s*]/g, "]")
-        .replace(/,\s*}/g, "}");
-
-      parsed = JSON.parse(normalized);
-    }
-
-    if (!Array.isArray(parsed)) return [];
-
-    const videos = parsed
-      .map((item, index) => {
-        const file = normalizeVideoUrl(
-          item?.file || item?.url || item?.src || "",
-          baseUrl
-        );
-
-        if (!file) return null;
-
-        return {
-          title: normalizeEpisodeTitle(
-            item?.title || item?.label || item?.name,
-            index
-          ),
-          file
-        };
-      })
-      .filter(Boolean);
-
-    console.log(`[${SITE_ID}] parsed ${videos.length} episodes`);
-
-    return videos;
-  } catch (err) {
-    console.log(`[${SITE_ID}] parseVideosArray failed:`, err.message);
-    return [];
-  }
-}
-
-function normalizeVideoUrl(url, baseUrl = BASE_URL) {
-  if (!url) return "";
-
-  let value = String(url)
-    .trim()
-    .replace(/&amp;/g, "&");
-
-  if (value.startsWith("//")) {
-    value = `https:${value}`;
-  } else if (value.startsWith("/")) {
-    value = absolutizeUrl(value, baseUrl);
-  }
-
-  return value;
 }
 
 function extractYouTubeId(url) {
@@ -207,66 +127,116 @@ function extractYouTubeId(url) {
   );
 }
 
-function isDirectVideoUrl(url) {
-  return /\.(?:m3u8|mp4|mkv|webm)(?:$|[?#])/i.test(url || "");
-}
-
 /* =========================
-   JAVASCRIPT STRING PARSING
+   JAVASCRIPT ARRAY PARSING
 ========================= */
-function decodeJavaScriptString(value, quote = '"') {
-  if (value == null) return "";
-
-  let result = String(value);
-
-  result = result
-    .replace(/\\u([0-9a-f]{4})/gi, (_, hex) =>
-      String.fromCharCode(parseInt(hex, 16))
-    )
-    .replace(/\\x([0-9a-f]{2})/gi, (_, hex) =>
-      String.fromCharCode(parseInt(hex, 16))
-    )
-    .replace(/\\n/g, "\n")
-    .replace(/\\r/g, "\r")
-    .replace(/\\t/g, "\t")
-    .replace(/\\\//g, "/")
-    .replace(/\\\\/g, "\\");
-
-  if (quote === '"') {
-    result = result.replace(/\\"/g, '"');
+function findBalancedArray(source, startIndex) {
+  if (!source || startIndex < 0 || source[startIndex] !== "[") {
+    return "";
   }
 
-  if (quote === "'") {
-    result = result.replace(/\\'/g, "'");
+  let quote = "";
+  let escaped = false;
+  let lineComment = false;
+  let blockComment = false;
+  let depth = 0;
+
+  for (let i = startIndex; i < source.length; i += 1) {
+    const char = source[i];
+    const next = source[i + 1] || "";
+
+    if (lineComment) {
+      if (char === "\n" || char === "\r") {
+        lineComment = false;
+      }
+      continue;
+    }
+
+    if (blockComment) {
+      if (char === "*" && next === "/") {
+        blockComment = false;
+        i += 1;
+      }
+      continue;
+    }
+
+    if (escaped) {
+      escaped = false;
+      continue;
+    }
+
+    if (quote) {
+      if (char === "\\") {
+        escaped = true;
+      } else if (char === quote) {
+        quote = "";
+      }
+      continue;
+    }
+
+    if (char === "/" && next === "/") {
+      lineComment = true;
+      i += 1;
+      continue;
+    }
+
+    if (char === "/" && next === "*") {
+      blockComment = true;
+      i += 1;
+      continue;
+    }
+
+    if (char === '"' || char === "'" || char === "`") {
+      quote = char;
+      continue;
+    }
+
+    if (char === "[") {
+      depth += 1;
+      continue;
+    }
+
+    if (char === "]") {
+      depth -= 1;
+
+      if (depth === 0) {
+        return source.slice(startIndex, i + 1);
+      }
+    }
   }
 
-  return result;
+  return "";
 }
 
-function readObjectStringProperty(objectText, propertyName) {
-  const pattern = new RegExp(
-    `(?:^|[,\\s{])${propertyName}\\s*:\\s*(["'])([\\s\\S]*?)\\1`,
-    "i"
-  );
+function extractVideosArraySource(html) {
+  if (!html) return "";
 
-  const match = objectText.match(pattern);
-  if (!match) return "";
+  const decoded = decodeHtmlEntities(html);
 
-  return decodeJavaScriptString(match[2], match[1]);
-}
-
-function extractArraySource(html) {
-  const patterns = [
-    /(?:const|let|var)\s+videos\s*=\s*(\[[\s\S]*?\])\s*;/i,
-    /window\.videos\s*=\s*(\[[\s\S]*?\])\s*;/i,
-    /options\.player_list\s*=\s*(\[[\s\S]*?\])\s*;/i,
-    /player_list\s*:\s*(\[[\s\S]*?\])\s*[,}]/i
+  const assignmentPatterns = [
+    /(?:const|let|var)\s+videos\s*=\s*/gi,
+    /window\.videos\s*=\s*/gi,
+    /options\.player_list\s*=\s*/gi,
+    /(?:const|let|var)\s+list_vdoiframe\s*=\s*/gi,
+    /window\.list_vdoiframe\s*=\s*/gi,
+    /player_list\s*:\s*/gi
   ];
 
-  for (const pattern of patterns) {
-    const match = html.match(pattern);
-    if (match?.[1]) {
-      return match[1];
+  for (const pattern of assignmentPatterns) {
+    pattern.lastIndex = 0;
+
+    let match;
+
+    while ((match = pattern.exec(decoded)) !== null) {
+      const bracketIndex = decoded.indexOf("[", pattern.lastIndex);
+
+      if (bracketIndex < 0) continue;
+
+      const between = decoded.slice(pattern.lastIndex, bracketIndex);
+      if (between.length > 100 || /[;{}]/.test(between)) continue;
+
+      const arraySource = findBalancedArray(decoded, bracketIndex);
+      if (arraySource) return arraySource;
     }
   }
 
@@ -277,7 +247,6 @@ function splitJavaScriptObjects(arraySource) {
   if (!arraySource) return [];
 
   const objects = [];
-
   let quote = "";
   let escaped = false;
   let depth = 0;
@@ -291,28 +260,22 @@ function splitJavaScriptObjects(arraySource) {
       continue;
     }
 
-    if (char === "\\") {
-      escaped = true;
-      continue;
-    }
-
     if (quote) {
-      if (char === quote) {
+      if (char === "\\") {
+        escaped = true;
+      } else if (char === quote) {
         quote = "";
       }
       continue;
     }
 
-    if (char === '"' || char === "'") {
+    if (char === '"' || char === "'" || char === "`") {
       quote = char;
       continue;
     }
 
     if (char === "{") {
-      if (depth === 0) {
-        start = i;
-      }
-
+      if (depth === 0) start = i;
       depth += 1;
       continue;
     }
@@ -330,13 +293,52 @@ function splitJavaScriptObjects(arraySource) {
   return objects;
 }
 
-/* =========================
-   VIDEO ARRAY
-========================= */
+function decodeJavaScriptString(value, quote = '"') {
+  if (value == null) return "";
+
+  let result = String(value)
+    .replace(/\\u([0-9a-f]{4})/gi, (_, hex) =>
+      String.fromCharCode(parseInt(hex, 16))
+    )
+    .replace(/\\x([0-9a-f]{2})/gi, (_, hex) =>
+      String.fromCharCode(parseInt(hex, 16))
+    )
+    .replace(/\\n/g, "\n")
+    .replace(/\\r/g, "\r")
+    .replace(/\\t/g, "\t")
+    .replace(/\\\//g, "/")
+    .replace(/\\\\/g, "\\");
+
+  if (quote === '"') {
+    result = result.replace(/\\"/g, '"');
+  } else if (quote === "'") {
+    result = result.replace(/\\'/g, "'");
+  }
+
+  return result;
+}
+
+function readObjectStringProperty(objectText, propertyName) {
+  const escapedName = propertyName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const pattern = new RegExp(
+    `(?:^|[,\\s{])["']?${escapedName}["']?\\s*:\\s*(["'\`])([\\s\\S]*?)\\1`,
+    "i"
+  );
+
+  const match = objectText.match(pattern);
+  if (!match) return "";
+
+  return decodeJavaScriptString(match[2], match[1]);
+}
+
 function parseVideosArray(html, pageUrl = BASE_URL) {
   try {
-    const arraySource = extractArraySource(html);
-    if (!arraySource) return [];
+    const arraySource = extractVideosArraySource(html);
+
+    if (!arraySource) {
+      console.log(`[${SITE_ID}] videos array not found`);
+      return [];
+    }
 
     const objectSources = splitJavaScriptObjects(arraySource);
 
@@ -363,13 +365,14 @@ function parseVideosArray(html, pageUrl = BASE_URL) {
       .filter(Boolean);
 
     const seen = new Set();
-
-    return videos.filter((video) => {
+    const uniqueVideos = videos.filter((video) => {
       if (seen.has(video.file)) return false;
-
       seen.add(video.file);
       return true;
     });
+
+    console.log(`[${SITE_ID}] parsed ${uniqueVideos.length} episodes`);
+    return uniqueVideos;
   } catch (err) {
     console.log(`[${SITE_ID}] parseVideosArray failed:`, err.message);
     return [];
@@ -377,7 +380,7 @@ function parseVideosArray(html, pageUrl = BASE_URL) {
 }
 
 /* =========================
-   PAGE METADATA
+   PAGE DETAIL
 ========================= */
 function extractPageTitle($) {
   return (
@@ -402,30 +405,6 @@ function extractPagePoster($) {
   return normalizeTheKomsanPoster(poster);
 }
 
-function extractPublishedDate($) {
-  const value =
-    $('meta[itemprop="datePublished"]').attr("content") ||
-    $('time[itemprop="datePublished"]').attr("datetime") ||
-    $(".post-date.published").attr("datetime") ||
-    $("script[type='application/ld+json']")
-      .toArray()
-      .map((el) => {
-        try {
-          const parsed = JSON.parse($(el).html() || "{}");
-          return parsed?.datePublished || "";
-        } catch {
-          return "";
-        }
-      })
-      .find(Boolean) ||
-    "";
-
-  if (!value) return null;
-
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? null : date;
-}
-
 async function getPageDetail(url) {
   try {
     const { data } = await axiosClient.get(url, {
@@ -436,21 +415,8 @@ async function getPageDetail(url) {
     });
 
     const $ = cheerio.load(data);
-
-    const title =
-      cleanTitle($("h1.entry-title").first().text()) ||
-      cleanTitle($('meta[property="og:title"]').attr("content")) ||
-      cleanTitle($("title").text());
-
-    let thumbnail =
-      $('meta[property="og:image"]').attr("content") ||
-      $('meta[name="twitter:image"]').attr("content") ||
-      $("#my-poster img").first().attr("src") ||
-      $(".post-body img").first().attr("src") ||
-      "";
-
-    thumbnail = normalizeTheKomsanPoster(thumbnail);
-
+    const title = extractPageTitle($);
+    const thumbnail = extractPagePoster($);
     const videos = parseVideosArray(data, url);
 
     if (!videos.length) {
@@ -466,7 +432,7 @@ async function getPageDetail(url) {
   } catch (err) {
     console.log(
       `[${SITE_ID}] getPageDetail failed:`,
-      err.response?.status,
+      err.response?.status || "",
       url,
       err.message
     );
@@ -476,130 +442,144 @@ async function getPageDetail(url) {
 }
 
 /* =========================
-   CATALOG PARSING
+   CATALOG HELPERS
 ========================= */
 function findCatalogPosts($) {
   const selectors = [
     "div.blog-posts div.grid-posts article.blog-post",
     "div.grid-posts article.blog-post",
     "article.blog-post",
-    "article.hentry",
-    ".post-filter"
+    ".grid-posts .post-filter",
+    "article.hentry"
   ];
 
   for (const selector of selectors) {
     const posts = $(selector).toArray();
-
-    if (posts.length) {
-      return posts;
-    }
+    if (posts.length) return posts;
   }
 
   return [];
 }
 
-function extractCatalogLink($el, pageUrl) {
-  const candidates = [
-    $el.find("a.post-filter-link").first(),
-    $el.find("h2.entry-title a").first(),
-    $el.find("h3.entry-title a").first(),
-    $el.find("a[href]").first()
-  ];
+function extractCatalogLink($post, pageUrl) {
+  const href =
+    $post.find("h2.entry-title a").first().attr("href") ||
+    $post.find("h3.entry-title a").first().attr("href") ||
+    $post.find("a.post-filter-link").first().attr("href") ||
+    $post.find("a[href]").first().attr("href") ||
+    "";
 
-  for (const candidate of candidates) {
-    const href = candidate.attr("href");
-
-    if (href) {
-      return absolutizeUrl(href, pageUrl);
-    }
-  }
-
-  return "";
+  return absolutizeUrl(href, pageUrl);
 }
 
-function extractCatalogTitle($el) {
-  const linkEl =
-    $el.find("a.post-filter-link").first().length > 0
-      ? $el.find("a.post-filter-link").first()
-      : $el.find("h2.entry-title a").first();
+function extractCatalogTitle($post) {
+  const titleLink =
+    $post.find("h2.entry-title a").first().length
+      ? $post.find("h2.entry-title a").first()
+      : $post.find("a.post-filter-link").first();
 
   return (
-    cleanTitle(linkEl.attr("title")) ||
-    cleanTitle($el.find("h2.entry-title").first().text()) ||
-    cleanTitle($el.find("h3.entry-title").first().text()) ||
-    cleanTitle(linkEl.text()) ||
-    cleanTitle($el.find("img").first().attr("alt"))
+    cleanTitle(titleLink.attr("title")) ||
+    cleanTitle($post.find("h2.entry-title").first().text()) ||
+    cleanTitle($post.find("h3.entry-title").first().text()) ||
+    cleanTitle(titleLink.text()) ||
+    cleanTitle($post.find("img").first().attr("alt"))
   );
 }
 
-function extractCatalogPoster($el) {
-  const img = $el.find("img.snip-thumbnail, img").first();
+function extractCatalogPoster($post) {
+  const image = $post.find("img.snip-thumbnail, img").first();
 
-  const poster =
-    img.attr("data-src") ||
-    img.attr("data-original") ||
-    img.attr("data-lazy-src") ||
-    img.attr("src") ||
-    "";
+  return normalizeTheKomsanPoster(
+    image.attr("data-src") ||
+    image.attr("data-original") ||
+    image.attr("data-lazy-src") ||
+    image.attr("src") ||
+    ""
+  );
+}
 
-  return normalizeTheKomsanPoster(poster);
+/* =========================
+   PAGINATION
+========================= */
+function getNextPageUrl(base, html) {
+  try {
+    const $ = cheerio.load(html);
+
+    const dataLoad =
+      $("#load-more-link").first().attr("data-load") ||
+      $("a.blog-pager-older-link[data-load]").first().attr("data-load") ||
+      "";
+
+    if (dataLoad) {
+      return absolutizeUrl(dataLoad, base || BASE_URL);
+    }
+
+    const href =
+      $("#Blog1_blog-pager-older-link").attr("href") ||
+      $("a.blog-pager-older-link").first().attr("href") ||
+      $("#blog-pager-older-link").attr("href") ||
+      "";
+
+    if (href && !/^javascript:/i.test(href) && href !== "#") {
+      return absolutizeUrl(href, base || BASE_URL);
+    }
+
+    return null;
+  } catch (err) {
+    console.log(`[${SITE_ID}] getNextPageUrl failed:`, err.message);
+    return null;
+  }
 }
 
 /* =========================
    CATALOG
 ========================= */
-async function getCatalogItems(prefix, siteConfig, initialUrl) {
+async function getCatalogItems(prefix, siteConfig, initialUrl, skip = 0) {
   try {
     if (!initialUrl) return [];
 
-    const { data: html } = await axiosClient.get(initialUrl, {
-      headers: {
-        ...PAGE_HEADERS,
-        Referer: siteConfig.baseUrl || BASE_URL
+    const pageSize = Number(siteConfig.pageSize || 20);
+    const pageNumber = Math.floor(Number(skip || 0) / pageSize);
+
+    let pageUrl = initialUrl;
+    let html = "";
+
+    for (let page = 0; page <= pageNumber; page += 1) {
+      const response = await axiosClient.get(pageUrl, {
+        headers: {
+          ...PAGE_HEADERS,
+          Referer: siteConfig.baseUrl || BASE_URL
+        }
+      });
+
+      html = response.data;
+
+      if (page < pageNumber) {
+        const nextUrl = getNextPageUrl(pageUrl, html);
+
+        if (!nextUrl || nextUrl === pageUrl) {
+          return [];
+        }
+
+        pageUrl = nextUrl;
       }
-    });
+    }
 
     const $ = cheerio.load(html);
     const posts = findCatalogPosts($);
 
     const results = posts.map((post) => {
       const $post = $(post);
-
-      const linkEl =
-        $post.find("h2.entry-title a").first().length
-          ? $post.find("h2.entry-title a").first()
-          : $post.find("a.post-filter-link").first();
-
-      const title =
-        cleanTitle(linkEl.attr("title")) ||
-        cleanTitle($post.find("h2.entry-title").first().text()) ||
-        cleanTitle($post.find("h3.entry-title").first().text()) ||
-        cleanTitle(linkEl.text()) ||
-        cleanTitle($post.find("img").first().attr("alt"));
-
-      const link = absolutizeUrl(
-        linkEl.attr("href") || "",
-        initialUrl
-      );
+      const title = extractCatalogTitle($post);
+      const link = extractCatalogLink($post, pageUrl);
 
       if (!title || !link) return null;
-
-      const image = $post
-        .find("img.snip-thumbnail, img")
-        .first();
-
-      const poster = normalizeTheKomsanPoster(
-        image.attr("data-src") ||
-        image.attr("data-original") ||
-        image.attr("data-lazy-src") ||
-        image.attr("src") ||
-        ""
-      );
 
       return {
         id: `${prefix}:${encodeURIComponent(link)}`,
         name: title,
-        poster
+        poster: extractCatalogPoster($post)
       };
     });
 
@@ -617,75 +597,12 @@ async function getCatalogItems(prefix, siteConfig, initialUrl) {
 }
 
 /* =========================
-   PAGINATION
-========================= */
-function getNextPageUrl(base, html) {
-  try {
-    const $ = cheerio.load(html);
-
-    const pager =
-      $("#load-more-link").first().length
-        ? $("#load-more-link").first()
-        : $("a.blog-pager-older-link").first();
-
-    const dataLoad =
-      pager.attr("data-load") ||
-      $("a.blog-pager-older-link[data-load]").first().attr("data-load") ||
-      "";
-
-    if (dataLoad) {
-      return absolutizeUrl(dataLoad, base || BASE_URL);
-    }
-
-    const href =
-      $("#Blog1_blog-pager-older-link").attr("href") ||
-      $("a.blog-pager-older-link").attr("href") ||
-      $("#blog-pager-older-link").attr("href") ||
-      $('a[rel="next"]').attr("href") ||
-      "";
-
-    if (
-      href &&
-      !/^javascript:/i.test(href) &&
-      href !== "#"
-    ) {
-      return absolutizeUrl(href, base || BASE_URL);
-    }
-
-    const posts = findCatalogPosts($);
-    if (!posts.length) return null;
-
-    const lastPost = $(posts[posts.length - 1]);
-
-    const published =
-      lastPost.find('meta[itemprop="datePublished"]').attr("content") ||
-      lastPost.find("time[datetime]").attr("datetime") ||
-      lastPost.find(".published").attr("datetime") ||
-      "";
-
-    if (!published) return null;
-
-    const next = new URL("/search", base || BASE_URL);
-    next.searchParams.set("updated-max", published);
-    next.searchParams.set("max-results", "20");
-
-    return next.toString();
-  } catch (err) {
-    console.log(`[${SITE_ID}] getNextPageUrl failed:`, err.message);
-    return null;
-  }
-}
-
-/* =========================
    EPISODES
 ========================= */
 async function getEpisodes(prefix, seriesUrl) {
   try {
     const detail = await getPageDetail(seriesUrl);
-
-    if (!detail?.videos?.length) {
-      return [];
-    }
+    if (!detail?.videos?.length) return [];
 
     return detail.videos.map((video, index) => ({
       id: `${prefix}:${encodeURIComponent(seriesUrl)}:1:${index + 1}`,
@@ -703,11 +620,10 @@ async function getEpisodes(prefix, seriesUrl) {
 }
 
 /* =========================
-   STREAM RESOLUTION
+   STREAM HELPERS
 ========================= */
 async function resolveStreamUrl(inputUrl, seriesUrl) {
   let url = normalizeVideoUrl(inputUrl, seriesUrl);
-
   if (!url) return "";
 
   if (/player\.php/i.test(url)) {
