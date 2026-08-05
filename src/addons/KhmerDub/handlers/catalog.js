@@ -140,7 +140,11 @@ module.exports = (builder, deps) => {
         };
 
         while (currentPage < targetPage && url) {
-          const { data } = await axiosClient.get(url, { headers });
+          const { data } = await axiosClient.get(url, {
+            headers,
+            maxRedirects: 0,
+            validateStatus: status => status >= 200 && status < 400
+            });
           const $ = cheerio.load(data);
 
           const older =
@@ -153,7 +157,11 @@ module.exports = (builder, deps) => {
         }
 
         for (let i = 0; i < PAGES_PER_BATCH && url; i++) {
-          const { data } = await axiosClient.get(url, { headers });
+          const { data } = await axiosClient.get(url, {
+            headers,
+            maxRedirects: 0,
+            validateStatus: status => status >= 200 && status < 400
+            }););
           const $ = cheerio.load(data);
 
           const articles = $("article.blog-post").toArray();
@@ -220,7 +228,11 @@ module.exports = (builder, deps) => {
         };
 
         while (currentPage < targetPage && url) {
-          const { data } = await axiosClient.get(url, { headers });
+          const { data } = await axiosClient.get(url, {
+            headers,
+            maxRedirects: 0,
+            validateStatus: status => status >= 200 && status < 400
+            });
           const $ = cheerio.load(data);
 
           const older =
@@ -233,7 +245,11 @@ module.exports = (builder, deps) => {
         }
 
         for (let i = 0; i < PAGES_PER_BATCH && url; i++) {
-          const { data } = await axiosClient.get(url, { headers });
+          const { data } = await axiosClient.get(url, {
+            headers,
+            maxRedirects: 0,
+            validateStatus: status => status >= 200 && status < 400
+            });
           const $ = cheerio.load(data);
 
           const articles = $("article.blog-post").toArray();
