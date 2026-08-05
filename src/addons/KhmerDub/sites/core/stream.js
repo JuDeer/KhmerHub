@@ -110,12 +110,17 @@ async function getStreamDetail(postId, seriesUrl = "") {
   if (sourceType === "vip-wordpress") {
     detail = await fetchVipWordpressDetail(seriesUrl, postId);
   } else {
+    const cachedBlogId = cached?.blogId || "";
+
+    const blogIds = cachedBlogId
+      ? [cachedBlogId]
+      : Object.values(BLOG_IDS);
+
     const results = await Promise.all(
-      Object.values(BLOG_IDS).map((blogId) =>
+      blogIds.map((blogId) =>
         fetchFromBlog(blogId, postId)
       )
     );
-
     const validResults = results.filter(
       (item) => item && Array.isArray(item.urls) && item.urls.length
     );
