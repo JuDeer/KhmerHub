@@ -46,14 +46,14 @@ module.exports = {
     }
   },	
   
-  phumi2: {
-	pageSize: 12, 
-    baseUrl: "https://www.phumikhmer1.club/",
+  thekomsan: {
+    pageSize: 20,
+    baseUrl: "https://www.thekomsan.com",
     genreUrls: {
-      Khmer: "https://www.phumikhmer1.club/search/label/Khmer?&max-results=24",
-      China: "https://www.phumikhmer1.club/search/label/Chinese?&max-results=24",
-      Korean: "https://www.phumikhmer1.club/search/label/Korea?&max-results=24"
-    }	
+      OnAir: "https://www.thekomsan.com/search/label/On%20Air?&max-results=20",
+      Chinese: "https://www.thekomsan.com/search/label/Chinese?&max-results=20",
+      Korean: "https://www.thekomsan.com/search/label/Korean?&max-results=20"
+    }
   },  
 
   khmerave: {
