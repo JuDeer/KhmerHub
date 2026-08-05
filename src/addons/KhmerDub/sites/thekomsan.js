@@ -14,22 +14,26 @@ const {
 /* =========================
    CONFIG
 ========================= */
+const SITE_ID = "thekomsan";
+const SITE_NAME = "TheKomsan";
+const BASE_URL = "https://www.thekomsan.com";
+
 const PAGE_HEADERS = {
   "User-Agent":
-    "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Mobile Safari/537.36",
+    "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 " +
+    "(KHTML, like Gecko) Chrome/137.0.0.0 Mobile Safari/537.36",
   Accept:
-    "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
-  "Accept-Language": "en-US,en;q=0.9"
+    "text/html,application/xhtml+xml,application/xml;q=0.9," +
+    "image/avif,image/webp,image/apng,*/*;q=0.8",
+  "Accept-Language": "en-US,en;q=0.9",
+  "Cache-Control": "no-cache",
+  Pragma: "no-cache"
 };
 
-const DEFAULT_BASE_URL = "https://www.thekomsan.com";
-const SITE_NAME = "TheKomsan";
-const STREAM_GROUP = "thekomsan";
-
 /* =========================
-   HELPERS
+   BASIC HELPERS
 ========================= */
-function absolutizeUrl(url, baseUrl = DEFAULT_BASE_URL) {
+function absolutizeUrl(url, baseUrl = BASE_URL) {
   if (!url) return "";
 
   try {
@@ -41,51 +45,51 @@ function absolutizeUrl(url, baseUrl = DEFAULT_BASE_URL) {
 
 function cleanTitle(text) {
   return String(text || "")
-    .replace(/&nbsp;/gi, " ")
+    .replace(/[\u200B-\u200D\uFEFF]/g, "")
     .replace(/\s+/g, " ")
     .trim();
 }
 
-function decodeHtmlEntities(text) {
-  if (!text) return "";
+function decodeHtmlEntities(value) {
+  if (!value) return "";
 
-  return String(text)
-    .replace(/&amp;/gi, "&")
+  return String(value)
     .replace(/&quot;/gi, '"')
+    .replace(/&#34;/gi, '"')
     .replace(/&#39;/gi, "'")
     .replace(/&apos;/gi, "'")
+    .replace(/&amp;/gi, "&")
     .replace(/&lt;/gi, "<")
-    .replace(/&gt;/gi, ">")
-    .replace(/&#(\d+);/g, (_, code) => {
-      const value = Number(code);
-      return Number.isFinite(value) ? String.fromCharCode(value) : _;
-    })
-    .replace(/&#x([0-9a-f]+);/gi, (_, code) => {
-      const value = parseInt(code, 16);
-      return Number.isFinite(value) ? String.fromCharCode(value) : _;
-    });
+    .replace(/&gt;/gi, ">");
 }
 
 function normalizeTheKomsanPoster(url) {
   if (!url) return "";
 
-  let poster = String(url).trim();
+  let poster = decodeHtmlEntities(String(url).trim());
+
+  if (poster.startsWith("//")) {
+    poster = `https:${poster}`;
+  }
 
   poster = poster
+    // Blogger path image sizing.
     .replace(/\/w\d+-h\d+[^/]*\//gi, "/s0/")
     .replace(/\/s\d+(-c|-rw)?\//gi, "/s0/")
-    .replace(/=w\d+-h\d+[^&]*/gi, "=s0")
+    .replace(/\/s\d+-r[w|h]\//gi, "/s0/")
+
+    // Blogger query/equal image sizing.
+    .replace(/=w\d+-h\d+[^&"']*/gi, "=s0")
     .replace(/=s\d+(-c|-rw)?/gi, "=s0");
 
   return normalizePoster(poster);
 }
 
 function normalizeEpisodeTitle(title, index) {
+  const fallback = `Episode ${index + 1}`;
   let value = cleanTitle(title);
 
-  if (!value) {
-    return `Episode ${index + 1}`;
-  }
+  if (!value) return fallback;
 
   value = value
     .replace(/^EPISODE\s*/i, "Episode ")
@@ -97,394 +101,365 @@ function normalizeEpisodeTitle(title, index) {
   );
 
   value = value.replace(
-    /^Episode\s*(\d+)\s*[-–—]\s*(?:E|END)$/i,
+    /^Episode\s*(\d+)\s*-\s*(?:E|END)$/i,
     "Episode $1 End"
   );
 
   return value;
 }
 
-function normalizeVideoUrl(url, baseUrl = DEFAULT_BASE_URL) {
+function normalizeVideoUrl(url, baseUrl = BASE_URL) {
   if (!url) return "";
 
-  let normalized = decodeHtmlEntities(String(url).trim())
+  let value = decodeHtmlEntities(String(url).trim());
+
+  value = value
     .replace(/\\\//g, "/")
     .replace(/\\u0026/gi, "&")
     .replace(/\\x26/gi, "&");
 
-  if (
-    (normalized.startsWith('"') && normalized.endsWith('"')) ||
-    (normalized.startsWith("'") && normalized.endsWith("'"))
-  ) {
-    normalized = normalized.slice(1, -1).trim();
+  if (value.startsWith("//")) {
+    value = `https:${value}`;
+  } else if (value.startsWith("/")) {
+    value = absolutizeUrl(value, baseUrl);
   }
 
-  if (normalized.startsWith("//")) {
-    normalized = `https:${normalized}`;
-  } else if (normalized.startsWith("/")) {
-    normalized = absolutizeUrl(normalized, baseUrl);
-  }
-
-  return normalized;
+  return value;
 }
 
-function getYouTubeId(url) {
+function extractYouTubeId(url) {
   if (!url) return "";
 
   return (
     url.match(/youtu\.be\/([^?&/]+)/i)?.[1] ||
     url.match(/[?&]v=([^&]+)/i)?.[1] ||
-    url.match(/\/embed\/([^?&/]+)/i)?.[1] ||
-    url.match(/\/shorts\/([^?&/]+)/i)?.[1] ||
+    url.match(/youtube\.com\/embed\/([^?&/]+)/i)?.[1] ||
+    url.match(/youtube\.com\/shorts\/([^?&/]+)/i)?.[1] ||
     ""
   );
 }
 
-function getNextPageUrl(base, html) {
-  const $ = cheerio.load(html);
-
-  const older =
-    $("a.blog-pager-older-link").attr("href") ||
-    $("#Blog1_blog-pager-older-link").attr("href") ||
-    $(".blog-pager-older-link").attr("href") ||
-    $('a[rel="next"]').attr("href") ||
-    "";
-
-  if (older) {
-    return absolutizeUrl(older, base);
-  }
-
-  const articles = $(
-    "article.blog-post, article.hentry, .blog-posts article"
-  ).toArray();
-
-  if (!articles.length) return null;
-
-  const last = $(articles[articles.length - 1]);
-
-  const published =
-    last.find('meta[itemprop="datePublished"]').attr("content") ||
-    last.find("time[datetime]").attr("datetime") ||
-    last.find(".published").attr("datetime") ||
-    "";
-
-  if (!published) return null;
-
-  return `${base}/search?updated-max=${encodeURIComponent(
-    published
-  )}&max-results=12`;
+function isDirectVideoUrl(url) {
+  return /\.(?:m3u8|mp4|mkv|webm)(?:$|[?#])/i.test(url || "");
 }
 
 /* =========================
-   VIDEO ARRAY PARSER
+   JAVASCRIPT STRING PARSING
 ========================= */
-function extractBalancedArray(source, startIndex) {
-  const openIndex = source.indexOf("[", startIndex);
-  if (openIndex < 0) return "";
+function decodeJavaScriptString(value, quote = '"') {
+  if (value == null) return "";
 
-  let depth = 0;
+  let result = String(value);
+
+  result = result
+    .replace(/\\u([0-9a-f]{4})/gi, (_, hex) =>
+      String.fromCharCode(parseInt(hex, 16))
+    )
+    .replace(/\\x([0-9a-f]{2})/gi, (_, hex) =>
+      String.fromCharCode(parseInt(hex, 16))
+    )
+    .replace(/\\n/g, "\n")
+    .replace(/\\r/g, "\r")
+    .replace(/\\t/g, "\t")
+    .replace(/\\\//g, "/")
+    .replace(/\\\\/g, "\\");
+
+  if (quote === '"') {
+    result = result.replace(/\\"/g, '"');
+  }
+
+  if (quote === "'") {
+    result = result.replace(/\\'/g, "'");
+  }
+
+  return result;
+}
+
+function readObjectStringProperty(objectText, propertyName) {
+  const pattern = new RegExp(
+    `(?:^|[,\\s{])${propertyName}\\s*:\\s*(["'])([\\s\\S]*?)\\1`,
+    "i"
+  );
+
+  const match = objectText.match(pattern);
+  if (!match) return "";
+
+  return decodeJavaScriptString(match[2], match[1]);
+}
+
+function extractArraySource(html) {
+  const patterns = [
+    /(?:const|let|var)\s+videos\s*=\s*(\[[\s\S]*?\])\s*;/i,
+    /window\.videos\s*=\s*(\[[\s\S]*?\])\s*;/i,
+    /options\.player_list\s*=\s*(\[[\s\S]*?\])\s*;/i,
+    /player_list\s*:\s*(\[[\s\S]*?\])\s*[,}]/i
+  ];
+
+  for (const pattern of patterns) {
+    const match = html.match(pattern);
+    if (match?.[1]) {
+      return match[1];
+    }
+  }
+
+  return "";
+}
+
+function splitJavaScriptObjects(arraySource) {
+  if (!arraySource) return [];
+
+  const objects = [];
+
   let quote = "";
   let escaped = false;
+  let depth = 0;
+  let start = -1;
 
-  for (let i = openIndex; i < source.length; i += 1) {
-    const char = source[i];
+  for (let i = 0; i < arraySource.length; i += 1) {
+    const char = arraySource[i];
 
-    if (quote) {
-      if (escaped) {
-        escaped = false;
-        continue;
-      }
-
-      if (char === "\\") {
-        escaped = true;
-        continue;
-      }
-
-      if (char === quote) {
-        quote = "";
-      }
-
+    if (escaped) {
+      escaped = false;
       continue;
     }
 
-    if (char === '"' || char === "'" || char === "`") {
+    if (char === "\\") {
+      escaped = true;
+      continue;
+    }
+
+    if (quote) {
+      if (char === quote) {
+        quote = "";
+      }
+      continue;
+    }
+
+    if (char === '"' || char === "'") {
       quote = char;
       continue;
     }
 
-    if (char === "[") {
+    if (char === "{") {
+      if (depth === 0) {
+        start = i;
+      }
+
       depth += 1;
-    } else if (char === "]") {
+      continue;
+    }
+
+    if (char === "}") {
       depth -= 1;
 
-      if (depth === 0) {
-        return source.slice(openIndex, i + 1);
+      if (depth === 0 && start >= 0) {
+        objects.push(arraySource.slice(start, i + 1));
+        start = -1;
       }
     }
   }
 
-  return "";
+  return objects;
 }
 
-function findVideosArraySource(html) {
-  const patterns = [
-    /(?:const|let|var)\s+videos\s*=/gi,
-    /window\.videos\s*=/gi,
-    /options\.player_list\s*=/gi,
-    /(?:const|let|var)\s+list_vdoiframe\s*=/gi,
-    /window\.list_vdoiframe\s*=/gi
-  ];
-
-  for (const pattern of patterns) {
-    pattern.lastIndex = 0;
-
-    let match;
-    while ((match = pattern.exec(html)) !== null) {
-      const arraySource = extractBalancedArray(
-        html,
-        match.index + match[0].length
-      );
-
-      if (arraySource) {
-        return arraySource;
-      }
-    }
-  }
-
-  return "";
-}
-
-function parseJavaScriptArray(raw) {
-  if (!raw) return [];
-
-  const cleaned = raw
-    .replace(/^\uFEFF/, "")
-    .replace(/<!--/g, "")
-    .replace(/-->/g, "")
-    .trim();
-
+/* =========================
+   VIDEO ARRAY
+========================= */
+function parseVideosArray(html, pageUrl = BASE_URL) {
   try {
-    const parsed = JSON.parse(cleaned);
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    // Blogger arrays normally use valid JavaScript object syntax,
-    // but may not be strict JSON.
-  }
+    const arraySource = extractArraySource(html);
+    if (!arraySource) return [];
 
-  try {
-    const parsed = Function(
-      `"use strict"; return (${cleaned});`
-    )();
+    const objectSources = splitJavaScriptObjects(arraySource);
 
-    return Array.isArray(parsed) ? parsed : [];
-  } catch (err) {
-    console.log(
-      "[thekomsan] parseJavaScriptArray failed:",
-      err.message
-    );
+    const videos = objectSources
+      .map((objectText, index) => {
+        const rawTitle =
+          readObjectStringProperty(objectText, "title") ||
+          readObjectStringProperty(objectText, "label") ||
+          readObjectStringProperty(objectText, "name");
 
-    return [];
-  }
-}
+        const rawFile =
+          readObjectStringProperty(objectText, "file") ||
+          readObjectStringProperty(objectText, "url") ||
+          readObjectStringProperty(objectText, "src");
 
-function parseVideosArray(html, baseUrl = DEFAULT_BASE_URL) {
-  try {
-    const raw = findVideosArraySource(html);
-    if (!raw) return [];
-
-    const parsed = parseJavaScriptArray(raw);
-    if (!parsed.length) return [];
-
-    return parsed
-      .map((item, index) => {
-        if (!item) return null;
-
-        if (typeof item === "string") {
-          const file = normalizeVideoUrl(item, baseUrl);
-
-          if (!file) return null;
-
-          return {
-            title: `Episode ${index + 1}`,
-            file
-          };
-        }
-
-        const file = normalizeVideoUrl(
-          item.file ||
-            item.url ||
-            item.src ||
-            item.link ||
-            item.video ||
-            item.embed ||
-            "",
-          baseUrl
-        );
-
+        const file = normalizeVideoUrl(rawFile, pageUrl);
         if (!file) return null;
 
         return {
-          title: normalizeEpisodeTitle(
-            item.title ||
-              item.name ||
-              item.label ||
-              item.episode ||
-              "",
-            index
-          ),
+          title: normalizeEpisodeTitle(rawTitle, index),
           file
         };
       })
       .filter(Boolean);
-  } catch (err) {
-    console.log(
-      "[thekomsan] parseVideosArray failed:",
-      err.message
-    );
 
+    const seen = new Set();
+
+    return videos.filter((video) => {
+      if (seen.has(video.file)) return false;
+
+      seen.add(video.file);
+      return true;
+    });
+  } catch (err) {
+    console.log(`[${SITE_ID}] parseVideosArray failed:`, err.message);
     return [];
   }
 }
 
 /* =========================
-   FALLBACK VIDEO PARSER
+   PAGE METADATA
 ========================= */
-function parseFallbackVideos(html, baseUrl) {
-  const $ = cheerio.load(html);
-  const results = [];
-
-  $("iframe[src]").each((index, element) => {
-    const src = normalizeVideoUrl($(element).attr("src"), baseUrl);
-    if (!src) return;
-
-    results.push({
-      title: `Episode ${index + 1}`,
-      file: src
-    });
-  });
-
-  $("video source[src], video[src]").each((index, element) => {
-    const src = normalizeVideoUrl($(element).attr("src"), baseUrl);
-    if (!src) return;
-
-    results.push({
-      title: `Episode ${results.length + 1}`,
-      file: src
-    });
-  });
-
-  return results.filter(
-    (item, index, array) =>
-      array.findIndex((entry) => entry.file === item.file) === index
+function extractPageTitle($) {
+  return (
+    cleanTitle($("h1.entry-title").first().text()) ||
+    cleanTitle($('meta[property="og:title"]').attr("content")) ||
+    cleanTitle($('meta[name="twitter:title"]').attr("content")) ||
+    cleanTitle($("title").text())
   );
 }
 
-/* =========================
-   PAGE DETAIL
-========================= */
+function extractPagePoster($) {
+  const poster =
+    $('meta[property="og:image"]').attr("content") ||
+    $('meta[name="twitter:image"]').attr("content") ||
+    $('meta[itemprop="image"]').attr("content") ||
+    $("#my-poster img").first().attr("data-src") ||
+    $("#my-poster img").first().attr("src") ||
+    $(".post-body img").first().attr("data-src") ||
+    $(".post-body img").first().attr("src") ||
+    "";
+
+  return normalizeTheKomsanPoster(poster);
+}
+
+function extractPublishedDate($) {
+  const value =
+    $('meta[itemprop="datePublished"]').attr("content") ||
+    $('time[itemprop="datePublished"]').attr("datetime") ||
+    $(".post-date.published").attr("datetime") ||
+    $("script[type='application/ld+json']")
+      .toArray()
+      .map((el) => {
+        try {
+          const parsed = JSON.parse($(el).html() || "{}");
+          return parsed?.datePublished || "";
+        } catch {
+          return "";
+        }
+      })
+      .find(Boolean) ||
+    "";
+
+  if (!value) return null;
+
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
 async function getPageDetail(url) {
   try {
     const { data } = await axiosClient.get(url, {
       headers: {
         ...PAGE_HEADERS,
-        Referer: url
-      }
+        Referer: BASE_URL
+      },
+      timeout: 20000
     });
 
-    const html = String(data || "");
-    const $ = cheerio.load(html);
+    const $ = cheerio.load(data);
 
-    const title =
-      cleanTitle($("h1.entry-title").first().text()) ||
-      cleanTitle(
-        $('meta[property="og:title"]').first().attr("content")
-      ) ||
-      cleanTitle(
-        $('meta[name="twitter:title"]').first().attr("content")
-      ) ||
-      cleanTitle($("title").first().text());
-
-    let thumbnail =
-      $('meta[property="og:image"]').first().attr("content") ||
-      $('meta[name="twitter:image"]').first().attr("content") ||
-      $("#my-poster img").first().attr("src") ||
-      $("#my-poster img").first().attr("data-src") ||
-      $("#postBody img").first().attr("src") ||
-      $("meta[itemprop='image']").first().attr("content") ||
-      "";
-
-    thumbnail = normalizeTheKomsanPoster(
-      absolutizeUrl(thumbnail, url)
-    );
-
-    let videos = parseVideosArray(html, url);
+    const title = extractPageTitle($);
+    const thumbnail = extractPagePoster($);
+    const releasedDate = extractPublishedDate($);
+    const videos = parseVideosArray(data, url);
 
     if (!videos.length) {
-      videos = parseFallbackVideos(html, url);
+      console.log(`[${SITE_ID}] no videos found:`, url);
+      return null;
     }
-
-    if (!videos.length) return null;
 
     return {
       title,
       thumbnail,
+      released: releasedDate?.toISOString() || null,
       videos
     };
   } catch (err) {
-    console.log(
-      "[thekomsan] getPageDetail failed:",
-      err.message
-    );
-
+    console.log(`[${SITE_ID}] getPageDetail failed:`, err.message);
     return null;
   }
 }
 
 /* =========================
-   CATALOG PARSERS
+   CATALOG PARSING
 ========================= */
-function parseCatalogPost($, element, pageUrl, prefix) {
-  const $el = $(element);
+function findCatalogPosts($) {
+  const selectors = [
+    "div.blog-posts div.grid-posts article.blog-post",
+    "div.grid-posts article.blog-post",
+    "article.blog-post",
+    "article.hentry",
+    ".post-filter"
+  ];
 
+  for (const selector of selectors) {
+    const posts = $(selector).toArray();
+
+    if (posts.length) {
+      return posts;
+    }
+  }
+
+  return [];
+}
+
+function extractCatalogLink($el, pageUrl) {
+  const candidates = [
+    $el.find("a.post-filter-link").first(),
+    $el.find("h2.entry-title a").first(),
+    $el.find("h3.entry-title a").first(),
+    $el.find("a[href]").first()
+  ];
+
+  for (const candidate of candidates) {
+    const href = candidate.attr("href");
+
+    if (href) {
+      return absolutizeUrl(href, pageUrl);
+    }
+  }
+
+  return "";
+}
+
+function extractCatalogTitle($el) {
   const linkEl =
-    $el.find("h2.entry-title a[href]").first().length
-      ? $el.find("h2.entry-title a[href]").first()
-      : $el.find("a.post-filter-inner[href]").first().length
-        ? $el.find("a.post-filter-inner[href]").first()
-        : $el.find("a.post-filter-link[href]").first().length
-          ? $el.find("a.post-filter-link[href]").first()
-          : $el.find("a[href]").first();
+    $el.find("a.post-filter-link").first().length > 0
+      ? $el.find("a.post-filter-link").first()
+      : $el.find("h2.entry-title a").first();
 
-  const title =
+  return (
     cleanTitle(linkEl.attr("title")) ||
     cleanTitle($el.find("h2.entry-title").first().text()) ||
-    cleanTitle($el.find(".entry-title").first().text()) ||
-    cleanTitle(linkEl.text());
+    cleanTitle($el.find("h3.entry-title").first().text()) ||
+    cleanTitle(linkEl.text()) ||
+    cleanTitle($el.find("img").first().attr("alt"))
+  );
+}
 
-  const link = absolutizeUrl(linkEl.attr("href") || "", pageUrl);
+function extractCatalogPoster($el) {
+  const img = $el.find("img.snip-thumbnail, img").first();
 
-  if (!title || !link) return null;
-
-  const imgEl = $el.find("img.snip-thumbnail, img").first();
-
-  let poster =
-    imgEl.attr("data-src") ||
-    imgEl.attr("data-original") ||
-    imgEl.attr("data-lazy-src") ||
-    imgEl.attr("src") ||
-    linkEl.find("img").attr("data-src") ||
-    linkEl.find("img").attr("src") ||
+  const poster =
+    img.attr("data-src") ||
+    img.attr("data-original") ||
+    img.attr("data-lazy-src") ||
+    img.attr("src") ||
     "";
 
-  poster = normalizeTheKomsanPoster(
-    absolutizeUrl(poster, pageUrl)
-  );
-
-  return {
-    id: `${prefix}:${encodeURIComponent(link)}`,
-    name: title,
-    poster
-  };
+  return normalizeTheKomsanPoster(poster);
 }
 
 /* =========================
@@ -492,53 +467,93 @@ function parseCatalogPost($, element, pageUrl, prefix) {
 ========================= */
 async function getCatalogItems(prefix, siteConfig, url) {
   try {
-    const pageUrl =
-      url ||
-      siteConfig?.catalogUrl ||
-      siteConfig?.baseUrl ||
-      DEFAULT_BASE_URL;
+    const pageUrl = absolutizeUrl(
+      url || siteConfig?.baseUrl || BASE_URL,
+      BASE_URL
+    );
 
     const { data } = await axiosClient.get(pageUrl, {
       headers: {
         ...PAGE_HEADERS,
-        Referer:
-          siteConfig?.baseUrl ||
-          DEFAULT_BASE_URL
-      }
+        Referer: siteConfig?.baseUrl || BASE_URL
+      },
+      timeout: 20000
     });
 
     const $ = cheerio.load(data);
-
-    let posts = $(
-      "div.blog-posts div.grid-posts article.blog-post"
-    ).toArray();
-
-    if (!posts.length) {
-      posts = $(
-        ".blog-posts article.blog-post, .blog-posts article.hentry"
-      ).toArray();
-    }
-
-    if (!posts.length) {
-      posts = $(
-        "article.blog-post, article.hentry, .post-filter"
-      ).toArray();
-    }
+    const posts = findCatalogPosts($);
 
     const results = posts
-      .map((post) =>
-        parseCatalogPost($, post, pageUrl, prefix)
-      )
+      .map((post) => {
+        const $el = $(post);
+
+        const link = extractCatalogLink($el, pageUrl);
+        const title = extractCatalogTitle($el);
+
+        if (!title || !link) return null;
+
+        if (!/^https?:\/\//i.test(link)) return null;
+        if (!/thekomsan\.com/i.test(link)) return null;
+        if (/\/search(?:\/|[?#]|$)/i.test(link)) return null;
+        if (/\/p\//i.test(link)) return null;
+
+        return {
+          id: `${prefix}:${encodeURIComponent(link)}`,
+          name: title,
+          poster: extractCatalogPoster($el)
+        };
+      })
       .filter(Boolean);
 
     return uniqById(results);
   } catch (err) {
-    console.log(
-      "[thekomsan] getCatalogItems failed:",
-      err.message
-    );
-
+    console.log(`[${SITE_ID}] getCatalogItems failed:`, err.message);
     return [];
+  }
+}
+
+/* =========================
+   PAGINATION
+========================= */
+function getNextPageUrl(base, html) {
+  try {
+    const $ = cheerio.load(html);
+
+    const nextUrl =
+      $("#Blog1_blog-pager-older-link").attr("href") ||
+      $("a.blog-pager-older-link").attr("href") ||
+      $(".blog-pager-older-link").attr("href") ||
+      $("#blog-pager-older-link").attr("href") ||
+      $('a[rel="next"]').attr("href") ||
+      "";
+
+    if (nextUrl) {
+      return absolutizeUrl(nextUrl, base || BASE_URL);
+    }
+
+    const posts = findCatalogPosts($);
+    if (!posts.length) return null;
+
+    const lastPost = $(posts[posts.length - 1]);
+
+    const published =
+      lastPost.find('meta[itemprop="datePublished"]').attr("content") ||
+      lastPost.find("time[datetime]").attr("datetime") ||
+      lastPost.find(".published").attr("datetime") ||
+      "";
+
+    if (!published) return null;
+
+    const searchBase = absolutizeUrl("/search", base || BASE_URL);
+    const next = new URL(searchBase);
+
+    next.searchParams.set("updated-max", published);
+    next.searchParams.set("max-results", "20");
+
+    return next.toString();
+  } catch (err) {
+    console.log(`[${SITE_ID}] getNextPageUrl failed:`, err.message);
+    return null;
   }
 }
 
@@ -554,27 +569,53 @@ async function getEpisodes(prefix, seriesUrl) {
       const episodeNumber = index + 1;
 
       return {
-        id: `${prefix}:${encodeURIComponent(
-          seriesUrl
-        )}:1:${episodeNumber}`,
+        id:
+          `${prefix}:${encodeURIComponent(seriesUrl)}` +
+          `:1:${episodeNumber}`,
+
         title:
           video.title ||
           `Episode ${String(episodeNumber).padStart(2, "0")}`,
+
         seriesTitle: detail.title,
         season: 1,
         episode: episodeNumber,
         thumbnail: detail.thumbnail || "",
-        released: new Date().toISOString()
+        released: detail.released || new Date().toISOString()
       };
     });
   } catch (err) {
-    console.log(
-      "[thekomsan] getEpisodes failed:",
-      err.message
-    );
-
+    console.log(`[${SITE_ID}] getEpisodes failed:`, err.message);
     return [];
   }
+}
+
+/* =========================
+   STREAM RESOLUTION
+========================= */
+async function resolveStreamUrl(inputUrl, seriesUrl) {
+  let url = normalizeVideoUrl(inputUrl, seriesUrl);
+
+  if (!url) return "";
+
+  if (/player\.php/i.test(url)) {
+    const resolved = await resolvePlayerUrl(url);
+
+    if (resolved) {
+      url = normalizeVideoUrl(resolved, seriesUrl);
+    }
+  }
+
+  if (/ok\.ru\/videoembed\//i.test(url)) {
+    const cleaned = url
+      .replace(/([?&])autoplay=1(?:&|$)/gi, "$1")
+      .replace(/[?&]$/, "");
+
+    const resolved = await resolveOkEmbed(cleaned);
+    url = normalizeVideoUrl(resolved || cleaned, seriesUrl);
+  }
+
+  return url;
 }
 
 /* =========================
@@ -582,12 +623,9 @@ async function getEpisodes(prefix, seriesUrl) {
 ========================= */
 async function getStream(prefix, seriesUrl, episode) {
   try {
-    const episodeNumber = Number(episode);
+    const episodeNumber = Number.parseInt(episode, 10);
 
-    if (
-      !Number.isInteger(episodeNumber) ||
-      episodeNumber < 1
-    ) {
+    if (!Number.isFinite(episodeNumber) || episodeNumber < 1) {
       return null;
     }
 
@@ -600,59 +638,33 @@ async function getStream(prefix, seriesUrl, episode) {
     let url = normalizeVideoUrl(video.file, seriesUrl);
     if (!url) return null;
 
-    const streamTitle =
-      video.title || `Episode ${episodeNumber}`;
-
     if (/youtu\.be|youtube\.com/i.test(url)) {
-      const ytId = getYouTubeId(url);
+      const ytId = extractYouTubeId(url);
       if (!ytId) return null;
 
       return {
         ytId,
         name: SITE_NAME,
-        title: `${streamTitle} (YouTube)`,
+        title: video.title || `Episode ${episodeNumber} (YouTube)`,
         behaviorHints: {
-          group: STREAM_GROUP
+          group: SITE_ID
         }
       };
     }
 
-    if (/player\.php/i.test(url)) {
-      const resolved = await resolvePlayerUrl(url);
-
-      if (!resolved) return null;
-
-      url = normalizeVideoUrl(resolved, seriesUrl);
-    }
-
-    if (/ok\.ru\/videoembed\//i.test(url)) {
-      const cleaned = url
-        .replace(/([?&])autoplay=1(?=&|$)/gi, "$1")
-        .replace(/[?&]$/, "")
-        .replace(/\?&/, "?");
-
-      const resolved = await resolveOkEmbed(cleaned);
-
-      url = normalizeVideoUrl(
-        resolved || cleaned,
-        seriesUrl
-      );
-    }
+    url = await resolveStreamUrl(url, seriesUrl);
+    if (!url) return null;
 
     return buildStream(
       url,
       episodeNumber,
-      streamTitle,
+      video.title || `Episode ${episodeNumber}`,
       SITE_NAME,
-      STREAM_GROUP,
+      SITE_ID,
       seriesUrl
     );
   } catch (err) {
-    console.log(
-      "[thekomsan] getStream failed:",
-      err.message
-    );
-
+    console.log(`[${SITE_ID}] getStream failed:`, err.message);
     return null;
   }
 }
