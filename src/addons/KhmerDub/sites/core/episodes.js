@@ -9,7 +9,29 @@ const { getStreamDetail, FILE_REGEX } = require("./stream");
    EPISODES
 ========================= */
 async function getEpisodes(prefix, seriesUrl) {
-  const postId = await getPostId(seriesUrl);
+  let postId = null;
+
+  if (prefix === "sunday") {
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      try {
+        postId = await getPostId(seriesUrl);
+        break;
+      } catch (err) {
+        console.log(
+          `[sunday] getPostId attempt ${attempt} failed:`,
+          err?.response?.status || err?.message
+        );
+
+        if (attempt < 3) {
+          await new Promise(resolve =>
+            setTimeout(resolve, attempt * 1000)
+          );
+        }
+      }
+    }
+  } else {
+    postId = await getPostId(seriesUrl);
+  }
 
   // Sunday playlist fallback
   if (!postId && prefix === "sunday") {
