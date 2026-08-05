@@ -1,5 +1,6 @@
 const { addonBuilder } = require("stremio-addon-sdk");
 const manifest = require("./manifest");
+const { URL_TO_POSTID, POST_INFO } = require("./utils/cache");
 
 const enabledSites = new Set(
   manifest.catalogs.map(c => c.id)
@@ -61,6 +62,8 @@ const deps = {
   normalizePoster,
   mapMetas,
   uniqById
+  URL_TO_POSTID,
+  POST_INFO
 };
 
 require("./handlers/catalog")(builder, deps);
