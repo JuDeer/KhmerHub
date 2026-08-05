@@ -161,7 +161,7 @@ module.exports = (builder, deps) => {
             headers,
             maxRedirects: 0,
             validateStatus: status => status >= 200 && status < 400
-            }););
+            });
           const $ = cheerio.load(data);
 
           const articles = $("article.blog-post").toArray();
