@@ -525,7 +525,7 @@ async function getCatalogItems(prefix, siteConfig, url) {
         titleLink.attr("href") ||
         "";
 
-      const link = absolutizeUrl(rawLink, requestUrl);
+      const link = absolutizeUrl(rawLink, baseUrl);
 
       if (
         !title ||
