@@ -1,5 +1,6 @@
 const cheerio = require("cheerio");
 const axiosClient = require("../utils/fetch");
+
 const {
   normalizePoster,
   uniqById
@@ -8,36 +9,34 @@ const {
 const {
   resolvePlayerUrl,
   resolveOkEmbed,
-  buildStream
+  resolveScreenPal,
+  buildStream,
+  buildYouTubeStreams
 } = require("../utils/streamResolvers");
 
 /* =========================
    CONFIG
 ========================= */
-const SITE_ID = "thekomsan";
+
 const SITE_NAME = "TheKomsan";
-const BASE_URL = "https://www.thekomsan.com";
+const GROUP_NAME = "thekomsan";
+const DEFAULT_BASE_URL = "https://www.thekomsan.com";
 
 const PAGE_HEADERS = {
   "User-Agent":
     "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 " +
-    "(KHTML, like Gecko) Chrome/137.0.0.0 Mobile Safari/537.36",
-  Accept:
-    "text/html,application/xhtml+xml,application/xml;q=0.9," +
-    "image/avif,image/webp,image/apng,*/*;q=0.8",
-  "Accept-Language": "en-US,en;q=0.9",
-  "Cache-Control": "no-cache",
-  Pragma: "no-cache"
+    "(KHTML, like Gecko) Chrome/137.0.0.0 Mobile Safari/537.36"
 };
 
 /* =========================
-   BASIC HELPERS
+   GENERAL HELPERS
 ========================= */
-function absolutizeUrl(url, baseUrl = BASE_URL) {
+
+function absolutizeUrl(url, baseUrl = DEFAULT_BASE_URL) {
   if (!url) return "";
 
   try {
-    return new URL(String(url).trim(), baseUrl).toString();
+    return new URL(url, baseUrl).toString();
   } catch {
     return String(url).trim();
   }
@@ -45,333 +44,216 @@ function absolutizeUrl(url, baseUrl = BASE_URL) {
 
 function cleanTitle(text) {
   return String(text || "")
-    .replace(/[\u200B-\u200D\uFEFF]/g, "")
+    .replace(/&#8203;/gi, "")
+    .replace(/\u200B/g, "")
     .replace(/\s+/g, " ")
     .trim();
-}
-
-function decodeHtmlEntities(value) {
-  if (!value) return "";
-
-  return String(value)
-    .replace(/&quot;/gi, '"')
-    .replace(/&#34;/gi, '"')
-    .replace(/&#39;/gi, "'")
-    .replace(/&apos;/gi, "'")
-    .replace(/&amp;/gi, "&")
-    .replace(/&lt;/gi, "<")
-    .replace(/&gt;/gi, ">");
 }
 
 function normalizeTheKomsanPoster(url) {
   if (!url) return "";
 
-  let poster = decodeHtmlEntities(String(url).trim());
-
-  if (poster.startsWith("//")) {
-    poster = `https:${poster}`;
-  }
-
-  poster = poster
-    .replace(/\/w\d+-h\d+[^/]*\//gi, "/s0/")
-    .replace(/\/s\d+(?:-c|-rw)?\//gi, "/s0/")
-    .replace(/=w\d+-h\d+[^&"']*/gi, "=s0")
-    .replace(/=s\d+(?:-c|-rw)?/gi, "=s0");
-
-  return normalizePoster(poster);
+  return normalizePoster(
+    String(url)
+      .trim()
+      .replace(/\/s\d+(?:-[a-z0-9-]+)?\//gi, "/s0/")
+      .replace(/\/w\d+-h\d+[^/]*\//gi, "/s0/")
+      .replace(/=s\d+(?:-[a-z0-9-]+)?/gi, "=s0")
+      .replace(/=w\d+-h\d+[^&]*/gi, "=s0")
+  );
 }
 
-function normalizeVideoUrl(url, baseUrl = BASE_URL) {
+function normalizeVideoUrl(url, baseUrl = DEFAULT_BASE_URL) {
   if (!url) return "";
 
-  let value = decodeHtmlEntities(String(url).trim())
-    .replace(/\\\//g, "/")
-    .replace(/^['"]|['"]$/g, "");
+  let normalized = String(url)
+    .trim()
+    .replace(/&amp;/gi, "&")
+    .replace(/\\u0026/gi, "&")
+    .replace(/\\\//g, "/");
 
-  if (value.startsWith("//")) {
-    value = `https:${value}`;
-  } else if (value.startsWith("/")) {
-    value = absolutizeUrl(value, baseUrl);
+  if (normalized.startsWith("//")) {
+    normalized = `https:${normalized}`;
+  } else if (normalized.startsWith("/")) {
+    normalized = absolutizeUrl(normalized, baseUrl);
   }
 
-  return value;
+  normalized = normalized.replace(/^http:\/\//i, "https://");
+
+  // Convert mobile OK.ru URLs to the standard domain.
+  normalized = normalized.replace(
+    /^https?:\/\/m\.ok\.ru\//i,
+    "https://ok.ru/"
+  );
+
+  // Some TheKomsan MP4 URLs end in ".mp4/".
+  normalized = normalized.replace(
+    /\.(mp4|m3u8)\/(?=([?#].*)?$)/i,
+    ".$1"
+  );
+
+  return normalized;
+}
+
+function extractEpisodeNumber(title, fallbackIndex) {
+  const text = String(title || "").trim();
+
+  const match =
+    text.match(/\bEP(?:ISODE)?[.\s_-]*0*(\d+)/i) ||
+    text.match(/\b0*(\d+)\s*(?:E|END)\b/i) ||
+    text.match(/\b0*(\d+)\b/);
+
+  if (!match?.[1]) {
+    return fallbackIndex + 1;
+  }
+
+  const number = Number.parseInt(match[1], 10);
+
+  return Number.isInteger(number) && number > 0
+    ? number
+    : fallbackIndex + 1;
 }
 
 function normalizeEpisodeTitle(title, index) {
-  const fallback = `Episode ${index + 1}`;
-  const value = cleanTitle(title);
+  const original = cleanTitle(title);
+  const episode = extractEpisodeNumber(original, index);
 
-  if (!value) return fallback;
+  const isEnd =
+    /\bEND\b/i.test(original) ||
+    new RegExp(`(?:EP(?:ISODE)?[.\\s_-]*0*${episode})\\s*E\\b`, "i")
+      .test(original);
 
-  const match = value.match(
-    /^(?:EPISODE|EP)[.\s_-]*(\d+)\s*(E|END)?$/i
-  );
-
-  if (!match) return value;
-
-  const episodeNumber = Number(match[1]);
-  const isEnd = Boolean(match[2]);
-
-  return `Episode ${episodeNumber}${isEnd ? " End" : ""}`;
+  return isEnd
+    ? `Episode ${episode} End`
+    : `Episode ${episode}`;
 }
 
-function extractYouTubeId(url) {
-  if (!url) return "";
+/* =========================
+   BLOGGER PAGINATION
+========================= */
+
+function getNextPageUrl(base, html) {
+  const $ = cheerio.load(html);
+
+  const older =
+    $("a.blog-pager-older-link").first().attr("href") ||
+    $("#Blog1_blog-pager-older-link").attr("href") ||
+    $(".blog-pager-older-link").first().attr("href") ||
+    $('a[rel="next"]').first().attr("href") ||
+    "";
+
+  if (older) {
+    return absolutizeUrl(older, base);
+  }
+
+  const articles = $("article.blog-post").toArray();
+  if (!articles.length) return null;
+
+  const lastArticle = $(articles[articles.length - 1]);
+
+  const published =
+    lastArticle
+      .find('meta[itemprop="datePublished"]')
+      .attr("content") ||
+    lastArticle.find("time[datetime]").attr("datetime") ||
+    lastArticle.find(".published").attr("datetime") ||
+    "";
+
+  if (!published) return null;
+
+  const cleanBase = String(base || DEFAULT_BASE_URL)
+    .replace(/\/$/, "");
 
   return (
-    url.match(/youtu\.be\/([^?&/]+)/i)?.[1] ||
-    url.match(/[?&]v=([^&]+)/i)?.[1] ||
-    url.match(/youtube\.com\/embed\/([^?&/]+)/i)?.[1] ||
-    url.match(/youtube\.com\/shorts\/([^?&/]+)/i)?.[1] ||
-    ""
+    `${cleanBase}/search?updated-max=` +
+    `${encodeURIComponent(published)}&max-results=20`
   );
 }
 
 /* =========================
-   JAVASCRIPT ARRAY PARSING
+   PLAYLIST PARSER
 ========================= */
-function findBalancedArray(source, startIndex) {
-  if (!source || startIndex < 0 || source[startIndex] !== "[") {
-    return "";
-  }
 
-  let quote = "";
-  let escaped = false;
-  let lineComment = false;
-  let blockComment = false;
-  let depth = 0;
+function decodeJavaScriptString(value) {
+  if (!value) return "";
 
-  for (let i = startIndex; i < source.length; i += 1) {
-    const char = source[i];
-    const next = source[i + 1] || "";
-
-    if (lineComment) {
-      if (char === "\n" || char === "\r") {
-        lineComment = false;
-      }
-      continue;
-    }
-
-    if (blockComment) {
-      if (char === "*" && next === "/") {
-        blockComment = false;
-        i += 1;
-      }
-      continue;
-    }
-
-    if (escaped) {
-      escaped = false;
-      continue;
-    }
-
-    if (quote) {
-      if (char === "\\") {
-        escaped = true;
-      } else if (char === quote) {
-        quote = "";
-      }
-      continue;
-    }
-
-    if (char === "/" && next === "/") {
-      lineComment = true;
-      i += 1;
-      continue;
-    }
-
-    if (char === "/" && next === "*") {
-      blockComment = true;
-      i += 1;
-      continue;
-    }
-
-    if (char === '"' || char === "'" || char === "`") {
-      quote = char;
-      continue;
-    }
-
-    if (char === "[") {
-      depth += 1;
-      continue;
-    }
-
-    if (char === "]") {
-      depth -= 1;
-
-      if (depth === 0) {
-        return source.slice(startIndex, i + 1);
-      }
-    }
-  }
-
-  return "";
+  return String(value)
+    .replace(/\\u0026/gi, "&")
+    .replace(/\\\//g, "/")
+    .replace(/\\"/g, "\"")
+    .replace(/\\'/g, "'")
+    .replace(/\\\\/g, "\\")
+    .trim();
 }
 
-function extractVideosArraySource(html) {
-  if (!html) return "";
-
-  const decoded = decodeHtmlEntities(html);
-
-  const assignmentPatterns = [
-    /(?:const|let|var)\s+videos\s*=\s*/gi,
-    /window\.videos\s*=\s*/gi,
-    /options\.player_list\s*=\s*/gi,
-    /(?:const|let|var)\s+list_vdoiframe\s*=\s*/gi,
-    /window\.list_vdoiframe\s*=\s*/gi,
-    /player_list\s*:\s*/gi
+function extractPlaylistArray(html) {
+  const patterns = [
+    /(?:const|let|var)\s+videos\s*=\s*(\[[\s\S]*?\])\s*;/i,
+    /options\.player_list\s*=\s*(\[[\s\S]*?\])\s*;/i,
+    /(?:const|let|var)\s+playlist\s*=\s*(\[[\s\S]*?\])\s*;/i
   ];
 
-  for (const pattern of assignmentPatterns) {
-    pattern.lastIndex = 0;
+  for (const pattern of patterns) {
+    const match = String(html || "").match(pattern);
 
-    let match;
-
-    while ((match = pattern.exec(decoded)) !== null) {
-      const bracketIndex = decoded.indexOf("[", pattern.lastIndex);
-
-      if (bracketIndex < 0) continue;
-
-      const between = decoded.slice(pattern.lastIndex, bracketIndex);
-      if (between.length > 100 || /[;{}]/.test(between)) continue;
-
-      const arraySource = findBalancedArray(decoded, bracketIndex);
-      if (arraySource) return arraySource;
+    if (match?.[1]) {
+      return match[1];
     }
   }
 
   return "";
 }
 
-function splitJavaScriptObjects(arraySource) {
-  if (!arraySource) return [];
+function parsePlaylistObject(objectText, index, baseUrl) {
+  const titleMatch =
+    objectText.match(
+      /(?:["']?title["']?)\s*:\s*(["'])([\s\S]*?)\1/i
+    );
 
-  const objects = [];
-  let quote = "";
-  let escaped = false;
-  let depth = 0;
-  let start = -1;
+  const fileMatch =
+    objectText.match(
+      /(?:["']?(?:file|src|url)["']?)\s*:\s*(["'])([\s\S]*?)\1/i
+    );
 
-  for (let i = 0; i < arraySource.length; i += 1) {
-    const char = arraySource[i];
+  if (!fileMatch?.[2]) return null;
 
-    if (escaped) {
-      escaped = false;
-      continue;
-    }
+  const rawTitle = titleMatch?.[2] || `Episode ${index + 1}`;
+  const rawFile = fileMatch[2];
 
-    if (quote) {
-      if (char === "\\") {
-        escaped = true;
-      } else if (char === quote) {
-        quote = "";
-      }
-      continue;
-    }
-
-    if (char === '"' || char === "'" || char === "`") {
-      quote = char;
-      continue;
-    }
-
-    if (char === "{") {
-      if (depth === 0) start = i;
-      depth += 1;
-      continue;
-    }
-
-    if (char === "}") {
-      depth -= 1;
-
-      if (depth === 0 && start >= 0) {
-        objects.push(arraySource.slice(start, i + 1));
-        start = -1;
-      }
-    }
-  }
-
-  return objects;
-}
-
-function decodeJavaScriptString(value, quote = '"') {
-  if (value == null) return "";
-
-  let result = String(value)
-    .replace(/\\u([0-9a-f]{4})/gi, (_, hex) =>
-      String.fromCharCode(parseInt(hex, 16))
-    )
-    .replace(/\\x([0-9a-f]{2})/gi, (_, hex) =>
-      String.fromCharCode(parseInt(hex, 16))
-    )
-    .replace(/\\n/g, "\n")
-    .replace(/\\r/g, "\r")
-    .replace(/\\t/g, "\t")
-    .replace(/\\\//g, "/")
-    .replace(/\\\\/g, "\\");
-
-  if (quote === '"') {
-    result = result.replace(/\\"/g, '"');
-  } else if (quote === "'") {
-    result = result.replace(/\\'/g, "'");
-  }
-
-  return result;
-}
-
-function readObjectStringProperty(objectText, propertyName) {
-  const escapedName = propertyName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const pattern = new RegExp(
-    `(?:^|[,\\s{])["']?${escapedName}["']?\\s*:\\s*(["'\`])([\\s\\S]*?)\\1`,
-    "i"
+  const file = normalizeVideoUrl(
+    decodeJavaScriptString(rawFile),
+    baseUrl
   );
 
-  const match = objectText.match(pattern);
-  if (!match) return "";
+  if (!file) return null;
 
-  return decodeJavaScriptString(match[2], match[1]);
+  return {
+    title: normalizeEpisodeTitle(
+      decodeJavaScriptString(rawTitle),
+      index
+    ),
+    file
+  };
 }
 
-function parseVideosArray(html, pageUrl = BASE_URL) {
+function parseVideosArray(html, baseUrl = DEFAULT_BASE_URL) {
   try {
-    const arraySource = extractVideosArraySource(html);
+    const rawArray = extractPlaylistArray(html);
+    if (!rawArray) return [];
 
-    if (!arraySource) {
-      return [];
-    }
+    const objects = rawArray.match(/\{[\s\S]*?\}/g) || [];
 
-    const objectSources = splitJavaScriptObjects(arraySource);
-
-    const videos = objectSources
-      .map((objectText, index) => {
-        const rawTitle =
-          readObjectStringProperty(objectText, "title") ||
-          readObjectStringProperty(objectText, "label") ||
-          readObjectStringProperty(objectText, "name");
-
-        const rawFile =
-          readObjectStringProperty(objectText, "file") ||
-          readObjectStringProperty(objectText, "url") ||
-          readObjectStringProperty(objectText, "src");
-
-        const file = normalizeVideoUrl(rawFile, pageUrl);
-        if (!file) return null;
-
-        return {
-          title: normalizeEpisodeTitle(rawTitle, index),
-          file
-        };
-      })
+    return objects
+      .map((objectText, index) =>
+        parsePlaylistObject(objectText, index, baseUrl)
+      )
       .filter(Boolean);
+  } catch (err) {
+    console.log(
+      "[thekomsan] parseVideosArray failed:",
+      err.message
+    );
 
-    const seen = new Set();
-    const uniqueVideos = videos.filter((video) => {
-      if (seen.has(video.file)) return false;
-      seen.add(video.file);
-      return true;
-    });
-
-    return uniqueVideos;
-  } catch {
     return [];
   }
 }
@@ -379,42 +261,38 @@ function parseVideosArray(html, pageUrl = BASE_URL) {
 /* =========================
    PAGE DETAIL
 ========================= */
-function extractPageTitle($) {
-  return (
-    cleanTitle($("h1.entry-title").first().text()) ||
-    cleanTitle($('meta[property="og:title"]').attr("content")) ||
-    cleanTitle($('meta[name="twitter:title"]').attr("content")) ||
-    cleanTitle($("title").text())
-  );
-}
-
-function extractPagePoster($) {
-  const poster =
-    $('meta[property="og:image"]').attr("content") ||
-    $('meta[name="twitter:image"]').attr("content") ||
-    $('meta[itemprop="image"]').attr("content") ||
-    $("#my-poster img").first().attr("data-src") ||
-    $("#my-poster img").first().attr("src") ||
-    $(".post-body img").first().attr("data-src") ||
-    $(".post-body img").first().attr("src") ||
-    "";
-
-  return normalizeTheKomsanPoster(poster);
-}
 
 async function getPageDetail(url) {
   try {
     const { data } = await axiosClient.get(url, {
       headers: {
         ...PAGE_HEADERS,
-        Referer: BASE_URL
+        Referer: url
       }
     });
 
-    const $ = cheerio.load(data);
-    const title = extractPageTitle($);
-    const thumbnail = extractPagePoster($);
-    const videos = parseVideosArray(data, url);
+    const html = String(data || "");
+    const $ = cheerio.load(html);
+
+    const title =
+      cleanTitle($("h1.entry-title").first().text()) ||
+      cleanTitle($('meta[property="og:title"]').attr("content")) ||
+      cleanTitle($("title").first().text());
+
+    let thumbnail =
+      $('meta[property="og:image"]').attr("content") ||
+      $('meta[name="twitter:image"]').attr("content") ||
+      $("#my-poster img").first().attr("data-src") ||
+      $("#my-poster img").first().attr("src") ||
+      $("#postimg img").first().attr("src") ||
+      $("meta[itemprop='image']").attr("content") ||
+      "";
+
+    thumbnail = normalizeTheKomsanPoster(
+      absolutizeUrl(thumbnail, url)
+    );
+
+    const videos = parseVideosArray(html, url);
 
     if (!videos.length) {
       return null;
@@ -425,97 +303,12 @@ async function getPageDetail(url) {
       thumbnail,
       videos
     };
-  } catch {
-    return null;
-  }
-}
+  } catch (err) {
+    console.log(
+      "[thekomsan] getPageDetail failed:",
+      err.message
+    );
 
-/* =========================
-   CATALOG HELPERS
-========================= */
-function findCatalogPosts($) {
-  const selectors = [
-    "div.blog-posts div.grid-posts article.blog-post",
-    "div.grid-posts article.blog-post",
-    "article.blog-post",
-    ".grid-posts .post-filter",
-    "article.hentry"
-  ];
-
-  for (const selector of selectors) {
-    const posts = $(selector).toArray();
-    if (posts.length) return posts;
-  }
-
-  return [];
-}
-
-function extractCatalogLink($post, pageUrl) {
-  const href =
-    $post.find("h2.entry-title a").first().attr("href") ||
-    $post.find("h3.entry-title a").first().attr("href") ||
-    $post.find("a.post-filter-link").first().attr("href") ||
-    $post.find("a[href]").first().attr("href") ||
-    "";
-
-  return absolutizeUrl(href, pageUrl);
-}
-
-function extractCatalogTitle($post) {
-  const titleLink =
-    $post.find("h2.entry-title a").first().length
-      ? $post.find("h2.entry-title a").first()
-      : $post.find("a.post-filter-link").first();
-
-  return (
-    cleanTitle(titleLink.attr("title")) ||
-    cleanTitle($post.find("h2.entry-title").first().text()) ||
-    cleanTitle($post.find("h3.entry-title").first().text()) ||
-    cleanTitle(titleLink.text()) ||
-    cleanTitle($post.find("img").first().attr("alt"))
-  );
-}
-
-function extractCatalogPoster($post) {
-  const image = $post.find("img.snip-thumbnail, img").first();
-
-  return normalizeTheKomsanPoster(
-    image.attr("data-src") ||
-    image.attr("data-original") ||
-    image.attr("data-lazy-src") ||
-    image.attr("src") ||
-    ""
-  );
-}
-
-/* =========================
-   PAGINATION
-========================= */
-function getNextPageUrl(base, html) {
-  try {
-    const $ = cheerio.load(html);
-
-    const dataLoad =
-      $("#load-more-link").first().attr("data-load") ||
-      $("a.blog-pager-older-link[data-load]").first().attr("data-load") ||
-      "";
-
-    if (dataLoad) {
-      return absolutizeUrl(dataLoad, base || BASE_URL);
-    }
-
-    const href =
-      $("#Blog1_blog-pager-older-link").attr("href") ||
-      $("a.blog-pager-older-link").first().attr("href") ||
-      $("#blog-pager-older-link").attr("href") ||
-      "";
-
-    if (href && !/^javascript:/i.test(href) && href !== "#") {
-      return absolutizeUrl(href, base || BASE_URL);
-    }
-
-    return null;
-  } catch {
     return null;
   }
 }
@@ -523,56 +316,91 @@ function getNextPageUrl(base, html) {
 /* =========================
    CATALOG
 ========================= */
-async function getCatalogItems(prefix, siteConfig, initialUrl, skip = 0) {
+
+async function getCatalogItems(prefix, siteConfig, url) {
   try {
-    if (!initialUrl) return [];
+    const baseUrl =
+      siteConfig?.baseUrl ||
+      DEFAULT_BASE_URL;
 
-    const pageSize = Number(siteConfig.pageSize || 20);
-    const pageNumber = Math.floor(Number(skip || 0) / pageSize);
-
-    let pageUrl = initialUrl;
-    let html = "";
-
-    for (let page = 0; page <= pageNumber; page += 1) {
-      const response = await axiosClient.get(pageUrl, {
-        headers: {
-          ...PAGE_HEADERS,
-          Referer: siteConfig.baseUrl || BASE_URL
-        }
-      });
-
-      html = response.data;
-
-      if (page < pageNumber) {
-        const nextUrl = getNextPageUrl(pageUrl, html);
-
-        if (!nextUrl || nextUrl === pageUrl) {
-          return [];
-        }
-
-        pageUrl = nextUrl;
+    const { data } = await axiosClient.get(url, {
+      headers: {
+        ...PAGE_HEADERS,
+        Referer: `${String(baseUrl).replace(/\/$/, "")}/`
       }
-    }
+    });
 
-    const $ = cheerio.load(html);
-    const posts = findCatalogPosts($);
+    const $ = cheerio.load(String(data || ""));
+
+    let posts = $(
+      "div.blog-posts div.grid-posts article.blog-post"
+    ).toArray();
+
+    if (!posts.length) {
+      posts = $("article.blog-post").toArray();
+    }
 
     const results = posts.map((post) => {
       const $post = $(post);
-      const title = extractCatalogTitle($post);
-      const link = extractCatalogLink($post, pageUrl);
 
-      if (!title || !link) return null;
+      const imageLink =
+        $post
+          .find("div.post-filter-image a.post-filter-link")
+          .first();
+
+      const titleLink =
+        $post.find("h2.entry-title a").first();
+
+      const anchor = imageLink.length
+        ? imageLink
+        : titleLink;
+
+      const title =
+        cleanTitle(anchor.attr("title")) ||
+        cleanTitle(titleLink.text()) ||
+        cleanTitle(anchor.text());
+
+      const link = absolutizeUrl(
+        anchor.attr("href") ||
+          titleLink.attr("href") ||
+          "",
+        url
+      );
+
+      if (!title || !link) {
+        return null;
+      }
+
+      const image =
+        $post.find("img.snip-thumbnail").first();
+
+      let poster =
+        image.attr("data-src") ||
+        image.attr("data-original") ||
+        image.attr("src") ||
+        anchor.find("img").first().attr("data-src") ||
+        anchor.find("img").first().attr("src") ||
+        "";
+
+      poster = normalizeTheKomsanPoster(
+        absolutizeUrl(poster, url)
+      );
 
       return {
         id: `${prefix}:${encodeURIComponent(link)}`,
         name: title,
-        poster: extractCatalogPoster($post)
+        poster,
+        background: poster
       };
     });
 
     return uniqById(results.filter(Boolean));
-  } catch {
+  } catch (err) {
+    console.log(
+      "[thekomsan] getCatalogItems failed:",
+      err.message
+    );
+
     return [];
   }
 }
@@ -580,98 +408,146 @@ async function getCatalogItems(prefix, siteConfig, initialUrl, skip = 0) {
 /* =========================
    EPISODES
 ========================= */
+
 async function getEpisodes(prefix, seriesUrl) {
   try {
     const detail = await getPageDetail(seriesUrl);
-    if (!detail?.videos?.length) return [];
 
-    return detail.videos.map((video, index) => ({
-      id: `${prefix}:${encodeURIComponent(seriesUrl)}:1:${index + 1}`,
-      title: video.title || `Episode ${index + 1}`,
-      seriesTitle: detail.title,
-      season: 1,
-      episode: index + 1,
-      thumbnail: detail.thumbnail || "",
-      released: new Date().toISOString()
-    }));
-  } catch {
+    if (!detail?.videos?.length) {
+      return [];
+    }
+
+    return detail.videos.map((video, index) => {
+      const episodeNumber = extractEpisodeNumber(
+        video.title,
+        index
+      );
+
+      return {
+        id:
+          `${prefix}:${encodeURIComponent(seriesUrl)}` +
+          `:1:${episodeNumber}`,
+        title: video.title,
+        seriesTitle: detail.title,
+        season: 1,
+        episode: episodeNumber,
+        thumbnail: detail.thumbnail || "",
+        released: new Date().toISOString()
+      };
+    });
+  } catch (err) {
+    console.log(
+      "[thekomsan] getEpisodes failed:",
+      err.message
+    );
+
     return [];
   }
 }
 
 /* =========================
-   STREAM HELPERS
-========================= */
-async function resolveStreamUrl(inputUrl, seriesUrl) {
-  let url = normalizeVideoUrl(inputUrl, seriesUrl);
-  if (!url) return "";
-
-  if (/player\.php/i.test(url)) {
-    const resolved = await resolvePlayerUrl(url);
-
-    if (resolved) {
-      url = normalizeVideoUrl(resolved, seriesUrl);
-    }
-  }
-
-  if (/ok\.ru\/videoembed\//i.test(url)) {
-    const cleaned = url
-      .replace(/([?&])autoplay=1(?:&|$)/gi, "$1")
-      .replace(/[?&]$/, "");
-
-    const resolved = await resolveOkEmbed(cleaned);
-    url = normalizeVideoUrl(resolved || cleaned, seriesUrl);
-  }
-
-  return url;
-}
-
-/* =========================
    STREAM
 ========================= */
+
 async function getStream(prefix, seriesUrl, episode) {
   try {
-    const episodeNumber = Number.parseInt(episode, 10);
+    const detail = await getPageDetail(seriesUrl);
 
-    if (!Number.isFinite(episodeNumber) || episodeNumber < 1) {
+    if (!detail?.videos?.length) {
       return null;
     }
 
-    const detail = await getPageDetail(seriesUrl);
-    if (!detail?.videos?.length) return null;
+    const video =
+      detail.videos.find(
+        (item, index) =>
+          extractEpisodeNumber(item.title, index) === episode
+      ) ||
+      detail.videos[episode - 1];
 
-    const video = detail.videos[episodeNumber - 1];
-    if (!video?.file) return null;
-
-    let url = normalizeVideoUrl(video.file, seriesUrl);
-    if (!url) return null;
-
-    if (/youtu\.be|youtube\.com/i.test(url)) {
-      const ytId = extractYouTubeId(url);
-      if (!ytId) return null;
-
-      return {
-        ytId,
-        name: SITE_NAME,
-        title: video.title || `Episode ${episodeNumber} (YouTube)`,
-        behaviorHints: {
-          group: SITE_ID
-        }
-      };
+    if (!video?.file) {
+      return null;
     }
 
-    url = await resolveStreamUrl(url, seriesUrl);
+    const streamTitle =
+      video.title || `Episode ${episode}`;
+
+    let url = normalizeVideoUrl(
+      video.file,
+      seriesUrl
+    );
+
     if (!url) return null;
+
+    /* YouTube */
+
+    if (/youtu\.be|youtube\.com/i.test(url)) {
+      return buildYouTubeStreams(
+        url,
+        episode,
+        streamTitle,
+        SITE_NAME,
+        GROUP_NAME
+      );
+    }
+
+    /* Phumi player.php */
+
+    if (/player\.php/i.test(url)) {
+      const resolved = await resolvePlayerUrl(url);
+
+      if (!resolved) {
+        return null;
+      }
+
+      url = normalizeVideoUrl(
+        resolved,
+        seriesUrl
+      );
+    }
+
+    /* ScreenPal */
+
+    if (/screenpal\.com/i.test(url)) {
+      const resolved = await resolveScreenPal(url);
+
+      if (resolved) {
+        url = normalizeVideoUrl(
+          resolved,
+          seriesUrl
+        );
+      }
+    }
+
+    /* OK.ru */
+
+    if (/ok\.ru\/(?:videoembed|video)\//i.test(url)) {
+      const embedUrl = url
+        .replace("/video/", "/videoembed/")
+        .replace(/[?&]autoplay=1\b/gi, "")
+        .replace(/[?&]autoplay=true\b/gi, "")
+        .replace(/\?$/, "");
+
+      const resolved = await resolveOkEmbed(embedUrl);
+
+      url = resolved || embedUrl;
+    }
+
+    url = normalizeVideoUrl(url, seriesUrl);
 
     return buildStream(
       url,
-      episodeNumber,
-      video.title || `Episode ${episodeNumber}`,
+      episode,
+      streamTitle,
       SITE_NAME,
-      SITE_ID,
+      GROUP_NAME,
       seriesUrl
     );
-  } catch {
+  } catch (err) {
+    console.log(
+      "[thekomsan] getStream failed:",
+      err.message
+    );
+
     return null;
   }
 }
