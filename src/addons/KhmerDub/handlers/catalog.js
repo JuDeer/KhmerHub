@@ -292,109 +292,105 @@ module.exports = (builder, deps) => {
         return { metas: mapMetas(uniq, type) };
       }	  
 
-  // TheKomsan - Blogger JSON feed
-  if (id === "thekomsan") {
-    const base = String(site.baseUrl || "").replace(/\/$/, "");
-    const pageSize = site.pageSize || 20;
-    const skip = Math.max(0, Number(extra?.skip || 0));
-    const startIndex = skip + 1;
+      // TheKomsan - Blogger JSON feed
+      if (id === "thekomsan") {
+        const base = String(site.baseUrl || "").replace(/\/$/, "");
+        const pageSize = site.pageSize || 20;
+        const skip = Math.max(0, Number(extra?.skip || 0));
+        const startIndex = skip + 1;
 
-    const genreLabels = {
-      OnAir: "On Air",
-      Chinese: "Chinese",
-      Korean: "Korean"
-    };
+        const genreLabels = {
+          OnAir: "On Air",
+          Chinese: "Chinese",
+          Korean: "Korean"
+        };
 
-    let feedUrl;
+        let feedUrl;
 
-    if (extra?.genre) {
-      const label = genreLabels[extra.genre];
-      if (!label) return { metas: [] };
+        if (extra?.genre) {
+          const label = genreLabels[extra.genre];
+          if (!label) return { metas: [] };
 
-      feedUrl =
-        `${base}/feeds/posts/default/-/${encodeURIComponent(label)}` +
-        `?alt=json&max-results=${pageSize}&start-index=${startIndex}`;
-    } else if (extra?.search) {
-      feedUrl =
-        `${base}/feeds/posts/default` +
-        `?alt=json&q=${encodeURIComponent(extra.search)}` +
-        `&max-results=${pageSize}&start-index=${startIndex}`;
-    } else {
-      feedUrl =
-        `${base}/feeds/posts/default` +
-        `?alt=json&max-results=${pageSize}&start-index=${startIndex}`;
-    }
+          feedUrl =
+            `${base}/feeds/posts/default/-/${encodeURIComponent(label)}` +
+            `?alt=json&max-results=${pageSize}&start-index=${startIndex}`;
+        } else if (extra?.search) {
+          feedUrl =
+            `${base}/feeds/posts/default` +
+            `?alt=json&q=${encodeURIComponent(extra.search)}` +
+            `&max-results=${pageSize}&start-index=${startIndex}`;
+        } else {
+          feedUrl =
+            `${base}/feeds/posts/default` +
+            `?alt=json&max-results=${pageSize}&start-index=${startIndex}`;
+        }
 
-    const headers = {
-      "User-Agent":
-        "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 " +
-        "(KHTML, like Gecko) Chrome/137.0.0.0 Mobile Safari/537.36",
-      Referer: `${base}/`
-    };
+        const headers = {
+          "User-Agent":
+            "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Mobile Safari/537.36",
+          Referer: `${base}/`,
+        };
 
-    try {
-      const { data } = await axiosClient.get(feedUrl, {
-        headers,
-        maxRedirects: 0,
-        validateStatus: status => status >= 200 && status < 400
-      });
+        try {
+          const { data } = await axiosClient.get(feedUrl, {
+            headers,
+            maxRedirects: 0,
+            validateStatus: status => status >= 200 && status < 400
+          });
 
-      const entries = data?.feed?.entry || [];
+          const entries = data?.feed?.entry || [];
 
-      const items = entries
-        .map((entry) => {
-          const title = String(entry?.title?.$t || "").trim();
+          const items = entries
+            .map((entry) => {
+              const title = String(entry?.title?.$t || "").trim();
 
-          const link =
-            entry?.link?.find(item => item.rel === "alternate")?.href ||
-            "";
+              const link =
+                entry?.link?.find(item => item.rel === "alternate")?.href ||
+                "";
 
-          const postHtml =
-            entry?.content?.$t ||
-            entry?.summary?.$t ||
-            "";
+              const postHtml =
+                entry?.content?.$t ||
+                entry?.summary?.$t ||
+                "";
 
-          let poster =
-            entry?.media$thumbnail?.url ||
-            postHtml.match(
-              /<img[^>]+(?:data-src|data-original|src)=["']([^"']+)/i
-            )?.[1] ||
-            "";
+              let poster =
+                entry?.media$thumbnail?.url ||
+                postHtml.match(
+                  /<img[^>]+(?:data-src|data-original|src)=["']([^"']+)/i
+                )?.[1] ||
+                "";
 
-          if (!title || !link) return null;
+              if (!title || !link) return null;
 
-          poster = normalizePoster(
-            poster
-              .replace(/\/s\d+(?:-[a-z0-9-]+)?\//gi, "/s0/")
-              .replace(/\/w\d+-h\d+[^/]*\//gi, "/s0/")
-              .replace(/=s\d+(?:-[a-z0-9-]+)?/gi, "=s0")
-              .replace(/=w\d+-h\d+[^&]*/gi, "=s0")
+              poster = normalizePoster(
+                poster
+                  .replace(/\/s\d+(?:-[a-z0-9-]+)?\//gi, "/s0/")
+                  .replace(/\/w\d+-h\d+[^/]*\//gi, "/s0/")
+                  .replace(/=s\d+(?:-[a-z0-9-]+)?/gi, "=s0")
+                  .replace(/=w\d+-h\d+[^&]*/gi, "=s0")
+              );
+
+              return {
+                id: `thekomsan:${encodeURIComponent(link)}`,
+                name: title,
+                poster,
+                background: poster
+              };
+            })
+            .filter(Boolean);
+
+          const uniq = uniqById(items);
+          const type = SITE_TYPES[id] || SITE_TYPES.default;
+          return { metas: mapMetas(uniq, type) };
+        } catch (err) {
+          console.log(
+            "[thekomsan] Blogger feed failed:",
+            err?.response?.status || err?.message
           );
 
-          return {
-            id: `thekomsan:${encodeURIComponent(link)}`,
-            name: title,
-            poster,
-            background: poster
-          };
-        })
-        .filter(Boolean);
-
-      const uniq = uniqById(items);
-      const type = SITE_TYPES[id] || SITE_TYPES.default;
-
-      return {
-        metas: mapMetas(uniq, type)
-      };
-    } catch (err) {
-      console.log(
-        "[thekomsan] Blogger feed failed:",
-        err?.response?.status || err?.message
-      );
-
-      return { metas: [] };
-    }
-  }
+          return { metas: [] };
+        }
+      }
 		
       // Video4Khmer
       if (id === "v4khmer") {
