@@ -292,55 +292,88 @@ module.exports = (builder, deps) => {
         return { metas: mapMetas(uniq, type) };
       }	  
 
-      // TheKomsan
-      if (id === "thekomsan") {
-        const base = String(site.baseUrl || "").replace(/\/$/, "");
+  // TheKomsan
+  if (id === "thekomsan") {
+    const base = String(site.baseUrl || "").replace(/\/$/, "");
 
-        const startUrl = extra?.genre
-          ? site.genreUrls?.[extra.genre]
-          : extra?.search
-            ? `${base}/search?q=${encodeURIComponent(extra.search)}&max-results=20`
-            : `${base}/?max-results=20`;
+    const startUrl = extra?.genre
+      ? site.genreUrls?.[extra.genre]
+      : extra?.search
+        ? `${base}/search?q=${encodeURIComponent(extra.search)}&max-results=20`
+        : `${base}/?max-results=20`;
 
-        if (!startUrl) return { metas: [] };
+    if (!startUrl) return { metas: [] };
 
-        const WEBSITE_PAGE_SIZE = site.pageSize || 20;
-        const PAGES_PER_BATCH = 3;
+    const WEBSITE_PAGE_SIZE = site.pageSize || 20;
 
-        const skip = Number(extra?.skip || 0);
-        const targetPage = Math.floor(skip / WEBSITE_PAGE_SIZE) + 1;
+    const skip = Math.max(0, Number(extra?.skip || 0));
+    const targetPage = Math.floor(skip / WEBSITE_PAGE_SIZE) + 1;
 
-        let url = startUrl;
-        let currentPage = 1;
-        let allItems = [];
+    let url = startUrl;
+    let currentPage = 1;
 
-        const headers = {
-          "User-Agent":
-            "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Mobile Safari/537.36",
-          Referer: `${base}/`,
-        };
+    const headers = {
+      "User-Agent":
+        "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Mobile Safari/537.36",
+      Referer: `${base}/`,
+    };
 
-        while (currentPage < targetPage && url) {
-          const { data } = await axiosClient.get(url, { headers });
-          url = siteEngine.getNextPageUrl(base, data);
-          currentPage++;
+    try {
+      while (currentPage < targetPage && url) {
+        const response = await axiosClient.get(url, {
+          headers,
+          maxRedirects: 0,
+          validateStatus: status => status >= 200 && status < 400
+        });
+
+        const html = String(response.data || "");
+
+        if (
+          response.status === 429 ||
+          /g-recaptcha/i.test(html) ||
+          /captcha-form/i.test(html) ||
+          /Our systems have detected unusual traffic/i.test(html) ||
+          /\/sorry\/index/i.test(html)
+        ) {
+          console.log("[thekomsan] pagination blocked by Blogger/Google");
+          return { metas: [] };
         }
 
-        for (let i = 0; i < PAGES_PER_BATCH && url; i++) {
-          const items = await siteEngine.getCatalogItems(id, site, url);
-          allItems.push(...items);
-
-          const { data } = await axiosClient.get(url, { headers });
-          url = siteEngine.getNextPageUrl(base, data);
-        }
-
-        const uniq = uniqById(allItems);
-        const type = SITE_TYPES[id] || SITE_TYPES.default;
-
-        return {
-          metas: mapMetas(uniq, type)
-        };
+        url = siteEngine.getNextPageUrl(base, html);
+        currentPage++;
       }
+
+      if (!url) return { metas: [] };
+
+      /*
+       * Fetch only the requested page.
+       * getCatalogItems() performs its own HTTP request, so do not request
+       * the same page again here.
+       */
+      const items = await siteEngine.getCatalogItems(id, site, url);
+
+      const uniq = uniqById(items);
+      const type = SITE_TYPES[id] || SITE_TYPES.default;
+
+      return {
+        metas: mapMetas(uniq, type)
+      };
+    } catch (err) {
+      if (
+        err?.response?.status === 429 ||
+        /429|Too Many Requests/i.test(err?.message || "")
+      ) {
+        console.log("[thekomsan] catalog rate-limited by Blogger/Google");
+      } else {
+        console.log(
+          "[thekomsan] catalog failed:",
+          err?.message || err
+        );
+      }
+
+      return { metas: [] };
+    }
+  }
 		
       // Video4Khmer
       if (id === "v4khmer") {
@@ -387,9 +420,7 @@ module.exports = (builder, deps) => {
         const uniq = uniqById(allItems);
         const type = SITE_TYPES[id] || SITE_TYPES.default;
         return { metas: mapMetas(uniq, type) };
-      }
-	  
-	  
+      }  
 	  
 	  // phumi2, cat3movie, xviceos
       if (id === "phumi2" || id === "cat3movie" || id === "xvideos") {
