@@ -225,7 +225,11 @@ function extractSources(html) {
       url &&
       url !== "#" &&
       /^https?:\/\//i.test(url) &&
-      (/\.(mp4|m3u8)(\?|$)/i.test(url) || /\/video\//i.test(url))
+      (
+        /\.(mp4|m3u8)(\?|$)/i.test(url) ||
+        /[?&]type=\.(?:mp4|m3u8)(?:&|$)/i.test(url) ||
+        /\/video\//i.test(url)
+      )
     );
 
   return uniq(sources);
