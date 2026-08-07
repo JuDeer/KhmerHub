@@ -476,7 +476,7 @@ async function getStream(prefix, url, epNum = 1) {
     return uniqueSources.map((src, index) => {
         const referer =
             /1a-1791\.com/i.test(src.url) ? "https://vivamax.cam/" :
-            /nizu\.top/i.test(src.url) ? finalPageUrl :
+            /nizu\.top/i.test(src.url) ? "https://www.cat3movie.club/" :
             null;
 
         return {
