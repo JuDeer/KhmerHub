@@ -97,6 +97,102 @@ async function fetchKhmerDramaDetail(khmerDramaUrl) {
   };
 }
 
+function extractKhmerMoviePlayerConfig(html = "") {
+  const text = String(html || "")
+    .replace(/\\\//g, "/")
+    .replace(/&amp;/g, "&");
+
+  const postId =
+    text.match(/data-postid=["'](\d+)["']/i)?.[1] || "";
+
+  const accessToken =
+    text.match(/data-access-token=["']([^"']+)["']/i)?.[1] || "";
+
+  const freeEps = parseInt(
+    text.match(/data-freeeps=["'](\d+)["']/i)?.[1] || "0",
+    10
+  );
+
+  const isPremium =
+    text.match(/data-premium=["']([^"']+)["']/i)?.[1] === "true";
+
+  const isUnlocked =
+    text.match(/data-unlocked=["']([^"']+)["']/i)?.[1] === "true";
+
+  const nonce =
+    text.match(/["']nonce["']\s*:\s*["']([^"']+)["']/i)?.[1] || "";
+
+  const ajaxUrl =
+    text.match(/["']ajaxUrl["']\s*:\s*["']([^"']+)["']/i)?.[1] ||
+    "https://khmer-movie.org/wp-admin/admin-ajax.php";
+
+  if (!postId || !accessToken || !nonce) {
+    return null;
+  }
+
+  return {
+    postId,
+    accessToken,
+    freeEps,
+    isPremium,
+    isUnlocked,
+    ajaxUrl
+  };
+}
+
+async function resolveKhmerMovieEpisode(pageUrl, episode) {
+  try {
+    const { data: html } = await axiosClient.get(pageUrl, {
+      headers: {
+        "User-Agent": "Mozilla/5.0",
+        Referer: pageUrl
+      }
+    });
+
+    const config = extractKhmerMoviePlayerConfig(html);
+    if (!config) return null;
+
+    const episodeIndex = episode - 1;
+
+    if (
+      config.isPremium &&
+      !config.isUnlocked &&
+      episodeIndex >= config.freeEps
+    ) {
+      return null;
+    }
+
+    const body = new URLSearchParams({
+      action: "anc_player_resolve_source",
+      nonce: config.nonce,
+      access_token: config.accessToken,
+      post_id: config.postId,
+      episode: String(episodeIndex)
+    });
+
+    const { data } = await axiosClient.post(
+      config.ajaxUrl,
+      body.toString(),
+      {
+        headers: {
+          "Content-Type":
+            "application/x-www-form-urlencoded; charset=UTF-8",
+          "User-Agent": "Mozilla/5.0",
+          Referer: pageUrl
+        }
+      }
+    );
+
+    if (!data?.success || !data?.data?.url) {
+      return null;
+    }
+
+    return data.data.url;
+  } catch {
+    return null;
+  }
+}
+
 /* =========================
    STREAM DETAIL
 ========================= */
@@ -241,6 +337,12 @@ async function getStream(prefix, seriesUrl, episode) {
 
   let url = detail.urls[episode - 1];
   if (!url) return null;
+
+  if (/https?:\/\/(?:www\.)?khmer-movie\.org\//i.test(url)) {
+    const resolved = await resolveKhmerMovieEpisode(url, episode);
+    if (!resolved) return null;
+    url = resolved;
+  }
 
   if (url.includes("player.php")) {
     const resolved = await resolvePlayerUrl(url);
