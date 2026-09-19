@@ -193,6 +193,66 @@ async function resolveKhmerMovieEpisode(pageUrl, episode) {
   }
 }
 
+async function fetchKhmerMovieDetail(seriesUrl) {
+  try {
+    const parsedUrl = new URL(seriesUrl);
+
+    const slug = parsedUrl.pathname
+      .split("/")
+      .filter(Boolean)
+      .pop();
+
+    if (!slug) return null;
+
+    const baseUrl =
+      `https://khmer-movie.org/tv-shows/${encodeURIComponent(slug)}/`;
+
+    const firstEpisodeUrl = `${baseUrl}?ep=1`;
+
+    const { data: html } = await axiosClient.get(firstEpisodeUrl, {
+      headers: {
+        "User-Agent": "Mozilla/5.0",
+        Referer: seriesUrl
+      }
+    });
+
+    const config = extractKhmerMoviePlayerConfig(html);
+    if (!config) return null;
+
+    const episodeCount = config.freeEps;
+
+    if (!episodeCount) return null;
+
+    const text = String(html || "")
+      .replace(/\\\//g, "/")
+      .replace(/&amp;/g, "&");
+
+    const title =
+      text.match(/<meta[^>]+property=["']og:title["'][^>]+content=["']([^"']+)["']/i)?.[1] ||
+      text.match(/<title>([^<]+)<\/title>/i)?.[1] ||
+      slug;
+
+    const thumbnail =
+      text.match(/<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["']/i)?.[1] ||
+      "";
+
+    const urls = Array.from(
+      { length: episodeCount },
+      (_, index) => `${baseUrl}?ep=${index + 1}`
+    );
+
+    return {
+      title,
+      thumbnail,
+      urls,
+      maxEp: urls.length,
+      sourceType: "khmer-movie"
+    };
+  } catch {
+    return null;
+  }
+}
+
 /* =========================
    STREAM DETAIL
 ========================= */
@@ -249,6 +309,16 @@ async function getStreamDetail(postId, seriesUrl = "") {
         ) {
           detail = kdDetail;
         }
+      }
+    } catch {}
+  }
+
+  if (!detail && seriesUrl) {
+    try {
+      const hostname = new URL(seriesUrl).hostname.replace(/^www\./, "");
+
+      if (hostname === "phumikhmer.vip") {
+        detail = await fetchKhmerMovieDetail(seriesUrl);
       }
     } catch {}
   }
