@@ -166,17 +166,6 @@ async function resolveKhmerMovieEpisode(pageUrl, episode) {
     });
 
     const config = extractKhmerMoviePlayerConfig(html);
-    console.log("[KhmerMovie config]", {
-      pageUrl,
-      episode,
-      postId: config?.postId,
-      freeEps: config?.freeEps,
-      isPremium: config?.isPremium,
-      isUnlocked: config?.isUnlocked,
-      hasAccessToken: !!config?.accessToken,
-      hasNonce: !!config?.nonce,
-      ajaxUrl: config?.ajaxUrl
-    });
     if (!config) return null;
 
     const episodeIndex = episode - 1;
@@ -210,25 +199,12 @@ async function resolveKhmerMovieEpisode(pageUrl, episode) {
       }
     );
 
-    console.log("[KhmerMovie resolve response]", {
-      episode,
-      success: data?.success,
-      data: data?.data
-    });
-
     if (!data?.success || !data?.data?.url) {
       return null;
     }
 
     return data.data.url;
   } catch (err) {
-    console.log("[KhmerMovie resolve error]", {
-      episode,
-      message: err?.message,
-      status: err?.response?.status,
-      data: err?.response?.data
-    });
-
     return null;
   }
 }
