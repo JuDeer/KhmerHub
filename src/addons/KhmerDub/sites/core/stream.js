@@ -119,12 +119,27 @@ function extractKhmerMoviePlayerConfig(html = "") {
   const isUnlocked =
     text.match(/data-unlocked=["']([^"']+)["']/i)?.[1] === "true";
 
-  const nonce =
-    text.match(/["']?nonce["']?\s*:\s*["']([^"']+)["']/i)?.[1] || "";
+  const playerSettingsMatch = text.match(
+    /var\s+PLAYER_SETTINGS\s*=\s*(\{.*?\});/is
+  );
 
-  const ajaxUrl =
-    text.match(/["']?(?:ajaxUrl|ajax_url)["']?\s*:\s*["']([^"']+)["']/i)?.[1] ||
-    "https://khmer-movie.org/wp-admin/admin-ajax.php";
+  let nonce = "";
+  let ajaxUrl = "https://khmer-movie.org/wp-admin/admin-ajax.php";
+
+  if (playerSettingsMatch?.[1]) {
+    const playerSettingsText = playerSettingsMatch[1];
+
+    nonce =
+      playerSettingsText.match(
+        /["']nonce["']\s*:\s*["']([^"']+)["']/i
+      )?.[1] || "";
+
+    ajaxUrl =
+      playerSettingsText.match(
+        /["']ajaxUrl["']\s*:\s*["']([^"']+)["']/i
+      )?.[1] ||
+      ajaxUrl;
+  }
 
   if (!postId || !accessToken || !nonce) {
     return null;
@@ -136,6 +151,7 @@ function extractKhmerMoviePlayerConfig(html = "") {
     freeEps,
     isPremium,
     isUnlocked,
+    nonce,
     ajaxUrl
   };
 }
