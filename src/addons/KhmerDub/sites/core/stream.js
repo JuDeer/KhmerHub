@@ -4,6 +4,7 @@ const { extractVideoLinks } = require("../../utils/helpers");
 const {
   resolvePlayerUrl,
   resolveOkEmbed,
+  resolveNizuEmbed,
   buildStream
 } = require("../../utils/streamResolvers");
 const { getPostId } = require("./postId");
@@ -269,12 +270,137 @@ async function fetchKhmerMovieDetail(seriesUrl) {
   }
 }
 
+
+/* =========================
+   ISOLATED VIP EXTRA SOURCES
+   Does not change legacy source selection.
+========================= */
+async function fetchExtraANCDetail(sourceUrl) {
+  try {
+    const u = new URL(sourceUrl);
+    if (u.hostname.replace(/^www\./, "") !== "sndrama.org" ||
+        !u.pathname.startsWith("/tv-shows/")) return null;
+    const baseUrl = `${u.origin}${u.pathname.endsWith("/") ? u.pathname : u.pathname + "/"}`;
+    const { data: html } = await axiosClient.get(`${baseUrl}?ep=1`);
+    const config = extractKhmerMoviePlayerConfig(html);
+    if (!config) return null;
+    const match = String(html).match(/<span\s+class=["']meta-label["']>\s*Episode:\s*<\/span>\s*<span\s+class=["']meta-value["']>\s*(\d+)\s*<\/span>/i);
+    const count = Number(match?.[1]) || config.freeEps || 1;
+    if (!Number.isInteger(count) || count < 1 || count > 500) return null;
+    return {
+      title: String(html).match(/<title[^>]*>([^<]+)<\/title>/i)?.[1] || "PhumiVIP",
+      thumbnail: String(html).match(/<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)/i)?.[1] || "",
+      urls: Array.from({ length: count }, (_, i) => `${baseUrl}?ep=${i + 1}`),
+      maxEp: count,
+      sourceType: "sndrama-extra"
+    };
+  } catch (error) {
+    console.warn("[VIP SNDrama detail]", error.message);
+    return null;
+  }
+}
+
+async function resolveExtraANCEpisode(pageUrl, episode) {
+  try {
+    const u = new URL(pageUrl);
+    if (u.hostname.replace(/^www\./, "") !== "sndrama.org") return null;
+    u.searchParams.set("ep", String(episode));
+    const { data: html } = await axiosClient.get(u.toString());
+    const config = extractKhmerMoviePlayerConfig(html);
+    if (!config || (config.isPremium && !config.isUnlocked && episode - 1 >= config.freeEps)) return null;
+    const body = new URLSearchParams({
+      action: "anc_player_resolve_source",
+      nonce: config.nonce,
+      access_token: config.accessToken,
+      post_id: config.postId,
+      episode: String(episode - 1)
+    });
+    const { data } = await axiosClient.post(config.ajaxUrl, body.toString(), {
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+        Referer: u.toString()
+      }
+    });
+    return data?.success && /^https?:\/\//i.test(data?.data?.url || "") ? data.data.url : null;
+  } catch (error) {
+    console.warn("[VIP SNDrama resolve]", error.message);
+    return null;
+  }
+}
+
+async function fetchExtraLulyDetail(seriesUrl, pageHtml) {
+  try {
+    const cheerio = require("cheerio");
+    const $ = cheerio.load(pageHtml);
+    const link = $("a[href*='luly.top/']").map((_, el) => $(el).attr("href")).get()
+      .find((href) => {
+        try {
+          const u = new URL(href);
+          return u.hostname === "luly.top" && /^\/[^/]+-\d+\/?$/.test(u.pathname);
+        } catch { return false; }
+      });
+    if (!link) return null;
+    const { data: html } = await axiosClient.get(link, { headers: { Referer: seriesUrl } });
+    const $$ = cheerio.load(html);
+    const episodes = new Map();
+    $$(".episodelist a[href]").each((_, el) => {
+      const number = Number($$(el).text().match(/(?:Eps?|Episode)\s*0*(\d+)/i)?.[1]);
+      if (!Number.isInteger(number) || number < 1) return;
+      try {
+        const u = new URL($$(el).attr("href"), link);
+        if (u.hostname === "luly.top") episodes.set(number, u.toString());
+      } catch {}
+    });
+    if (!episodes.size) return null;
+    return {
+      title: $$('h2[itemprop="partOfSeries"]').first().text().trim() || "PhumiVIP",
+      thumbnail: $$('meta[property="og:image"]').attr("content") || "",
+      urls: [...episodes].sort((a, b) => a[0] - b[0]).map(([, url]) => url),
+      maxEp: episodes.size,
+      sourceType: "luly-extra"
+    };
+  } catch (error) {
+    console.warn("[VIP Luly detail]", error.message);
+    return null;
+  }
+}
+
+async function resolveExtraLulyEpisode(episodeUrl) {
+  try {
+    const cheerio = require("cheerio");
+    const { data } = await axiosClient.get(episodeUrl);
+    const iframe = cheerio.load(data)(".player-embed iframe[src]").first().attr("src");
+    if (!iframe) return null;
+    const u = new URL(iframe, episodeUrl);
+    if (!/^s\d+\.nizu\.top$/i.test(u.hostname)) return null;
+    return u.toString();
+  } catch { return null; }
+}
+
+async function discoverExtraVIPDetail(seriesUrl, cachedHtml) {
+  try {
+    const u = new URL(seriesUrl);
+    if (u.hostname.replace(/^www\./, "") === "sndrama.org") {
+      return await fetchExtraANCDetail(seriesUrl);
+    }
+    if (u.hostname.replace(/^www\./, "") !== "phumikhmer.vip") return null;
+    const html = cachedHtml || (await axiosClient.get(seriesUrl)).data;
+    const sn = String(html).replace(/\\\//g, "/")
+      .match(/https?:\/\/(?:www\.)?sndrama\.org\/tv-shows\/[^"'<>\s]+/i)?.[0];
+    if (sn) {
+      const detail = await fetchExtraANCDetail(sn.replace(/&amp;/g, "&"));
+      if (detail) return detail;
+    }
+    return await fetchExtraLulyDetail(seriesUrl, html);
+  } catch { return null; }
+}
+
 /* =========================
    STREAM DETAIL
 ========================= */
 async function getStreamDetail(postId, seriesUrl = "") {
   const cached = POST_INFO.get(postId);
-  if (cached?.detail) return cached.detail;
+  if (cached?.detail?.urls?.length) return cached.detail;
 
   const sourceType = cached?.sourceType || "blogger";
   let detail = null;
@@ -329,6 +455,12 @@ async function getStreamDetail(postId, seriesUrl = "") {
     } catch {}
   }
 
+  // Additional hosts are fallbacks only; do not replace a working legacy source.
+  // VIP WordPress pages can link to SNDrama or Luly, so do not exclude them.
+  if (!detail && seriesUrl) {
+    detail = await discoverExtraVIPDetail(seriesUrl, cached?.pageHtml || "");
+  }
+
   if (!detail && seriesUrl) {
     try {
       const hostname = new URL(seriesUrl).hostname.replace(/^www\./, "");
@@ -372,6 +504,11 @@ async function getStream(prefix, seriesUrl, episode) {
 
   const providerName = providerNames[prefix] || "KhmerDub";
   const groupName = prefix || "khmerdub";
+
+  if (prefix === "vip" && /^https?:\/\/(?:www\.)?sndrama\.org\/tv-shows\//i.test(seriesUrl)) {
+    const resolved = await resolveExtraANCEpisode(seriesUrl, episode);
+    return resolved ? buildStream(resolved, episode, undefined, providerName, groupName, seriesUrl) : null;
+  }
 
   if (prefix === "sunday" && !postId) {
     const { data } = await axiosClient.get(seriesUrl, {
@@ -423,6 +560,20 @@ async function getStream(prefix, seriesUrl, episode) {
 
   let url = detail.urls[episode - 1];
   if (!url) return null;
+
+  // Only new sources enter these branches. Legacy playback remains untouched.
+  if (/^https?:\/\/(?:www\.)?sndrama\.org\/tv-shows\//i.test(url)) {
+    const resolved = await resolveExtraANCEpisode(url, episode);
+    if (!resolved) return null;
+    return buildStream(resolved, episode, undefined, providerName, groupName, url);
+  }
+
+  if (/^https?:\/\/(?:www\.)?luly\.top\//i.test(url)) {
+    const embed = await resolveExtraLulyEpisode(url);
+    if (!embed) return null;
+    const resolved = await resolveNizuEmbed(embed);
+    return resolved ? buildStream(resolved, episode, undefined, providerName, groupName, embed) : null;
+  }
 
   if (/https?:\/\/(?:www\.)?khmer-movie\.org\//i.test(url)) {
     const resolved = await resolveKhmerMovieEpisode(url, episode);
