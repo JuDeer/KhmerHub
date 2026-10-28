@@ -50,38 +50,35 @@ module.exports = (builder, deps) => {
         return { metas: mapMetas(items, "channel") };
       }
 	  
-	        // KhmerAve / Merlkon
+	  // KhmerAve / Merlkon
       if ((id === "khmerave" || id === "merlkon") && extra?.genre) {
         const baseGenreUrl = site.genreUrls?.[extra.genre];
         if (!baseGenreUrl) return { metas: [] };
 
         const WEBSITE_PAGE_SIZE = site.pageSize || 18;
-        const PAGES_PER_BATCH = id === "khmerave" ? 1 : 3;
+        const PAGES_PER_BATCH = 3;
 
         const skip = Number(extra?.skip || 0);
         const startPage = Math.floor(skip / WEBSITE_PAGE_SIZE) + 1;
 
         const genreBase = String(baseGenreUrl).replace(/\/$/, "");
-        const allItems = [];
+        const pages = [];
 
         for (let p = startPage; p < startPage + PAGES_PER_BATCH; p++) {
           const url = p === 1
             ? `${genreBase}/`
             : `${genreBase}/page/${p}/`;
 
-          const items = await siteEngine.getCatalogItems(id, site, url);
-          allItems.push(...items);
-
-          if (id === "khmerave" && items.length === 0) {
-            break;
-          }
+          pages.push(siteEngine.getCatalogItems(id, site, url));
         }
 
+        const results = await Promise.all(pages);
+        const allItems = results.flat();
         const uniq = uniqById(allItems);
 
         const type = SITE_TYPES[id] || SITE_TYPES.default;
         return { metas: mapMetas(uniq, type) };
-      }
+      }	  
 	  
       if (extra?.search && (id === "khmerave" || id === "merlkon")) {
         const keyword = encodeURIComponent(extra.search);
@@ -98,27 +95,24 @@ module.exports = (builder, deps) => {
 
       if (id === "khmerave" || id === "merlkon") {
         const WEBSITE_PAGE_SIZE = site.pageSize || 18;
-        const PAGES_PER_BATCH = id === "khmerave" ? 1 : 3;
+        const PAGES_PER_BATCH = 3;
 
         const skip = Number(extra?.skip || 0);
         const startPage = Math.floor(skip / WEBSITE_PAGE_SIZE) + 1;
 
         const base = String(site.baseUrl || "").replace(/\/$/, "");
-        const allItems = [];
+        const pages = [];
 
         for (let p = startPage; p < startPage + PAGES_PER_BATCH; p++) {
           const url = p === 1
             ? `${base}/`
             : `${base}/page/${p}/`;
 
-          const items = await siteEngine.getCatalogItems(id, site, url);
-          allItems.push(...items);
+          pages.push(siteEngine.getCatalogItems(id, site, url));
+        }
 
-          if (id === "khmerave" && items.length === 0) {
-            break;
-          }
-      }
-
+        const results = await Promise.all(pages);
+        const allItems = results.flat();
         const uniq = uniqById(allItems);
 
         const type = SITE_TYPES[id] || SITE_TYPES.default;
