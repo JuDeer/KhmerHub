@@ -68,39 +68,14 @@ function extractEpisodeNumber(link, text = "") {
 ========================= */
 async function getCatalogItems(prefix, siteConfig, url) {
   try {
-    // TEMP: Test whether KhmerAve WordPress REST API works from Render
-    for (const testUrl of [
-      "https://www.khmeravenue.com/wp-json/wp/v2/",
-      "https://www.khmeravenue.com/wp-json/wp/v2/album",
-    ]) {
-      try {
-        const res = await axios.get(testUrl, {
-          headers: { "User-Agent": UA_WIN, Referer: referer(prefix) },
-          timeout: 15000,
-        });
-
-        console.log("[KhmerAve REST test]", {
-          url: testUrl,
-          status: res.status,
-          contentType: res.headers["content-type"],
-          type: typeof res.data,
-        });
-      } catch (err) {
-        console.error("[KhmerAve REST test FAILED]", {
-          url: testUrl,
-          status: err.response?.status,
-          server: err.response?.headers?.server,
-          cfRay: err.response?.headers?.["cf-ray"],
-          body:
-            typeof err.response?.data === "string"
-              ? err.response.data.slice(0, 300)
-              : err.response?.data,
-        });
-      }
-    }
-
     const { data } = await axios.get(url, {
-      headers: { "User-Agent": UA_WIN, Referer: referer(prefix) },
+      headers: {
+        "User-Agent": UA_WIN,
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.9",
+        "Cache-Control": "no-cache",
+        Referer: referer(prefix),
+      },
       timeout: 15000,
     });
 
@@ -135,12 +110,8 @@ async function getCatalogItems(prefix, siteConfig, url) {
       url: err.config?.url,
       server: err.response?.headers?.server,
       cfRay: err.response?.headers?.["cf-ray"],
-      contentType: err.response?.headers?.["content-type"],
-      body:
-        typeof err.response?.data === "string"
-          ? err.response.data.slice(0, 1000)
-          : err.response?.data,
     });
+
     return [];
   }
 }
