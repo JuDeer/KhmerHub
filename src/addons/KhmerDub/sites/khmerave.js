@@ -69,13 +69,7 @@ function extractEpisodeNumber(link, text = "") {
 async function getCatalogItems(prefix, siteConfig, url) {
   try {
     const { data } = await axios.get(url, {
-      headers: {
-        "User-Agent": UA_WIN,
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-        "Accept-Language": "en-US,en;q=0.9",
-        "Cache-Control": "no-cache",
-        Referer: referer(prefix),
-      },
+      headers: { "User-Agent": UA_WIN, Referer: referer(prefix) },
       timeout: 15000,
     });
 
@@ -104,14 +98,7 @@ async function getCatalogItems(prefix, siteConfig, url) {
 
     return items;
   } catch (err) {
-    console.error("KhmerAve catalog error", {
-      message: err.message,
-      status: err.response?.status,
-      url: err.config?.url,
-      server: err.response?.headers?.server,
-      cfRay: err.response?.headers?.["cf-ray"],
-    });
-
+    console.error("khmerave catalog error:", err.message);
     return [];
   }
 }
