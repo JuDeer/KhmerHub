@@ -98,7 +98,18 @@ async function getCatalogItems(prefix, siteConfig, url) {
 
     return items;
   } catch (err) {
-    console.error("khmerave catalog error:", err.message);
+    console.error("KhmerAve catalog error", {
+      message: error.message,
+      status: error.response?.status,
+      url: error.config?.url,
+      server: error.response?.headers?.server,
+      cfRay: error.response?.headers?.["cf-ray"],
+      contentType: error.response?.headers?.["content-type"],
+      body:
+        typeof error.response?.data === "string"
+          ? error.response.data.slice(0, 1000)
+          : error.response?.data,
+    });
     return [];
   }
 }
